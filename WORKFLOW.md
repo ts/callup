@@ -16,9 +16,9 @@ healthy process is not necessarily current; its reported revision must match
 ## Responsibilities
 
 Codex implements changes, runs proportionate automated checks, updates the
-durable handoff, and commits a coherent result. The user performs browser
-acceptance on the canonical instance when useful. Codex does not repeatedly
-restart the service merely to duplicate that visual verification.
+durable handoff, commits a coherent result, and starts or restarts the canonical
+instance at agreed checkpoints. The user needs no terminal workflow and performs
+browser acceptance when useful.
 
 Restarting is an explicit handoff point because the NZBGeek key belongs only to
 the service process or macOS Keychain. Never copy it into chat, source, command
@@ -37,7 +37,7 @@ and is passed only in the child service's environment.
 
 ## Start or restart
 
-First stop the existing foreground Callup process, then run:
+Codex stops the existing Callup process and runs:
 
 ```bash
 Scripts/run-canonical
@@ -47,8 +47,9 @@ The launcher refuses to start from a non-`main` branch or a dirty working tree,
 builds the committed source, retrieves the key from Keychain when it is not
 already in the environment, and starts Callup on port 8484.
 
-Verify the exact running revision at <http://localhost:8484/health> before doing
-browser acceptance.
+The user can ask Codex to restart the canonical instance at any time. Verify the
+exact running revision at <http://localhost:8484/health> before browser
+acceptance.
 
 ## Normal change cycle
 
@@ -56,7 +57,8 @@ browser acceptance.
 2. Run automated tests and relevant safety checks.
 3. Update `PROJECT_CONTEXT.md` when the durable state or next step changes.
 4. Commit the result on `main`.
-5. Restart the canonical instance when the user wants to verify that checkpoint.
+5. Codex restarts the canonical instance when the user wants to verify that
+   checkpoint.
 6. Record any observed provider behavior in sanitized fixtures.
 
 The eventual Linux homelab service should preserve these same invariants using

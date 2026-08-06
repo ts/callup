@@ -354,9 +354,10 @@ concepts; its human-facing preference types remain useful.
 
 - 2026-08-06 — Normalize development around one canonical local instance on
   port 8484, built from clean committed `main` and identified by its Git revision
-  in `/health`. Codex owns automated verification and coherent commits; the user
-  owns browser acceptance at useful checkpoints. The local launcher retrieves
-  the rotated indexer key from macOS Keychain without storing it in the project.
+  in `/health`. Codex owns automated verification, coherent commits, and the
+  canonical process lifecycle; the user owns browser acceptance at useful
+  checkpoints and needs no terminal workflow. The local launcher retrieves the
+  rotated indexer key from macOS Keychain without storing it in the project.
 - 2026-08-06 — The first controlled NZBGeek season search returned 100
   candidates with sizes and publication dates, but no provider-reported episode
   coverage, resolution, or codec. Treat title parsing as required evidence
