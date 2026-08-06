@@ -32,9 +32,10 @@ continue without reconstructing the product decisions from chat.
 ### Immediate next step
 
 Restart the updated build under the existing process-only NZBGeek key and verify
-the new unranked season-results UI. Then preserve sanitized provider evidence
-durably and begin parsing episode coverage and traits from release titles. Do
-not rank or submit downloads yet.
+the new connection indicator and unranked season-results UI. Then begin parsing
+episode coverage and traits from release titles. Discovery remains intentionally
+in-memory; only sanitized response shapes belong in test fixtures during this
+phase. Do not rank or submit downloads yet.
 
 ### Secret-handling rule learned during setup
 
@@ -287,7 +288,7 @@ concepts; its human-facing preference types remain useful.
 - [x] Search/select a series and inspect its seasons.
 - [x] Fetch and group the episode list.
 - [x] Make one controlled read-only season query through the indexer.
-- [ ] Persist sanitized provider evidence and normalized results. Never store
+- [x] Capture observed, sanitized provider evidence in a fixture without storing
   raw credential-bearing download URLs.
 - [x] Display normalized candidates without ranking or downloading.
 - [x] Build and fixture-test a generic Newznab request/response seam for
@@ -392,8 +393,8 @@ concepts; its human-facing preference types remain useful.
 ## Active step
 
 **Restart the updated build with environment-only NZBGeek configuration, verify
-the unranked season-results UI, and add durable sanitized search evidence before
-title parsing and ranking.**
+the visible connection state and unranked season-results UI, then parse coverage
+and traits from titles. Keep discovery in-memory and do not rank or download.**
 
 ## Open questions
 

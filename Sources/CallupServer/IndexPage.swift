@@ -16,6 +16,8 @@ let indexHTML = #"""
     .lede, .muted, .meta { color: #91a0b3; }
     .lede { font-size: 1.1rem; margin-bottom: 30px; }
     .badge { display: inline-block; color: #64d67c; border: 1px solid #276b38; border-radius: 999px; padding: 4px 10px; }
+    .badge.warning { color: #f0b95b; border-color: #78581e; }
+    .runtime { min-height: 20px; margin: 0 0 18px; font-size: .9rem; }
     form { display: flex; gap: 10px; padding: 14px; background: #131b26; border: 1px solid #263244; border-radius: 14px; }
     input, button { font: inherit; border-radius: 9px; padding: 12px 14px; }
     input { flex: 1; min-width: 0; color: inherit; background: #0b1017; border: 1px solid #344258; }
@@ -50,9 +52,10 @@ let indexHTML = #"""
 </head>
 <body>
 <main>
-  <span class="badge">Read only</span>
+  <span id="mode-badge" class="badge">Read only · Checking NZBGeek…</span>
   <h1>Callup</h1>
   <p class="lede">What do you want next?</p>
+  <p id="runtime" class="runtime muted"></p>
 
   <form id="search-form">
     <input id="query" name="q" type="search" placeholder="Search for a television series" autocomplete="off" required>
@@ -73,6 +76,8 @@ let indexHTML = #"""
 </main>
 <script>
 const form = document.querySelector('#search-form');
+const modeBadge = document.querySelector('#mode-badge');
+const runtime = document.querySelector('#runtime');
 const query = document.querySelector('#query');
 const searchButton = document.querySelector('#search-button');
 const status = document.querySelector('#status');
@@ -81,6 +86,25 @@ const results = document.querySelector('#results');
 const lineupSection = document.querySelector('#lineup-section');
 const selectedTitle = document.querySelector('#selected-title');
 const seasons = document.querySelector('#seasons');
+
+loadRuntime();
+
+async function loadRuntime() {
+  try {
+    const health = await requestJSON('/health');
+    const connected = health.indexer === 'nzbgeek';
+    modeBadge.textContent = connected
+      ? 'Read only · NZBGeek connected'
+      : 'Read only · NZBGeek not configured';
+    modeBadge.classList.toggle('warning', !connected);
+    runtime.textContent = health.revision && health.revision !== 'unknown'
+      ? `Running revision ${health.revision}`
+      : '';
+  } catch {
+    modeBadge.textContent = 'Read only · Provider status unavailable';
+    modeBadge.classList.add('warning');
+  }
+}
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
