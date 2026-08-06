@@ -13,6 +13,9 @@ continue without reconstructing the product decisions from chat.
 ### Current executable state
 
 - Vapor service executable: `callup`, listening on `0.0.0.0:8484`.
+- The canonical local instance runs from clean, committed `main`; `/health`
+  reports its source revision. `WORKFLOW.md` defines the shared verification
+  cycle and `Scripts/run-canonical` enforces it.
 - Browser UI performs live, read-only TVmaze series search and displays seasons
   and episodes. The current source also offers an unranked, read-only release
   search for each season.
@@ -347,6 +350,11 @@ concepts; its human-facing preference types remain useful.
 
 ## Decisions
 
+- 2026-08-06 — Normalize development around one canonical local instance on
+  port 8484, built from clean committed `main` and identified by its Git revision
+  in `/health`. Codex owns automated verification and coherent commits; the user
+  owns browser acceptance at useful checkpoints. The local launcher retrieves
+  the rotated indexer key from macOS Keychain without storing it in the project.
 - 2026-08-06 — The first controlled NZBGeek season search returned 100
   candidates with sizes and publication dates, but no provider-reported episode
   coverage, resolution, or codec. Treat title parsing as required evidence

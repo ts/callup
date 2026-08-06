@@ -29,6 +29,7 @@ enum CallupServer {
 
         let metadata = TVMazeClient()
         let indexer = configuredIndexer()
+        let revision = ProcessInfo.processInfo.environment["CALLUP_REVISION"] ?? "unknown"
 
         application.get { _ in
             Response(
@@ -93,7 +94,8 @@ enum CallupServer {
                 status: "ok",
                 mode: "read-only",
                 metadata: "tvmaze",
-                indexer: indexer == nil ? "not-configured" : "nzbgeek"
+                indexer: indexer == nil ? "not-configured" : "nzbgeek",
+                revision: revision
             )
         }
     }
@@ -158,4 +160,5 @@ private struct HealthResponse: Content {
     let mode: String
     let metadata: String
     let indexer: String
+    let revision: String
 }
