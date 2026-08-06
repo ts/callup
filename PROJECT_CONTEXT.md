@@ -18,7 +18,8 @@ continue without reconstructing the product decisions from chat.
   cycle and `Scripts/run-canonical` enforces it.
 - Browser UI performs live, read-only TVmaze series search and displays seasons
   and episodes. The current source also offers an unranked, read-only release
-  search for each season.
+  search for each season through NZBGeek. The UI labels these provider roles
+  separately so indexer connectivity does not imply metadata search switched.
 - Generic Newznab code builds TV searches and normalizes XML responses.
   NZBGeek is the first configured indexer.
 - `GET /api/tv/releases` is read-only and disabled unless
