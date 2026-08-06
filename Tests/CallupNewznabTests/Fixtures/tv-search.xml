@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <title>Fixture Indexer</title>
+    <newznab:response offset="0" total="3"/>
+    <item>
+      <title>A.Great.Show.S01E01.1080p.WEB-DL.HEVC-GROUP</title>
+      <guid isPermaLink="false">release-episode-1</guid>
+      <pubDate>Tue, 05 Aug 2026 12:34:56 +0000</pubDate>
+      <enclosure url="https://indexer.example/api?t=get&amp;id=release-episode-1" length="734003200" type="application/x-nzb"/>
+      <newznab:attr name="size" value="734003200"/>
+      <newznab:attr name="category" value="5040"/>
+      <newznab:attr name="season" value="1"/>
+      <newznab:attr name="episode" value="1"/>
+      <newznab:attr name="video" value="HEVC"/>
+      <newznab:attr name="resolution" value="1920x1080"/>
+    </item>
+    <item>
+      <title>A.Great.Show.S01.COMPLETE.1080p.WEB-DL.x265-GROUP</title>
+      <guid isPermaLink="true">https://indexer.example/details/release-season-1</guid>
+      <pubDate>Mon, 04 Aug 2026 10:00:00 +0000</pubDate>
+      <newznab:attr name="size" value="6815744000"/>
+      <newznab:attr name="category" value="5040"/>
+      <newznab:attr name="season" value="1"/>
+    </item>
+    <item>
+      <title>A Great Show 1x12 Episode Title [HDTV+WEB][dual-audio][GROUP]</title>
+      <guid isPermaLink="false">release-observed-shape-1</guid>
+      <pubDate>Wed, 15 Oct 2025 22:15:54 +0000</pubDate>
+      <newznab:attr name="size" value="436327000"/>
+      <newznab:attr name="category" value="5040"/>
+    </item>
+  </channel>
+</rss>
