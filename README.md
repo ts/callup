@@ -37,6 +37,23 @@ The release route stays disabled until `CALLUP_NZBGEEK_API_KEY` exists in the
 server process environment. `CALLUP_NZBGEEK_URL` can override the default API
 endpoint. Never put either value in source control or a browser URL.
 
+## Application store
+
+Callup uses one embedded SQLite database through SQLiteNIO, without an ORM.
+Durable product state and replaceable provider cache entries will share this
+store while retaining different semantics. The current slice caches TVmaze
+series and episode responses and normalized Newznab searches.
+
+Fresh cache entries are returned directly. Expired entries are returned
+immediately and refreshed in the background. Provider cache data is disposable,
+contains no credentials or credential-bearing download URLs, and never becomes
+the authority for provider facts.
+
+The default macOS database is
+`~/Library/Application Support/Callup/callup.sqlite`. Linux deployments should
+set `CALLUP_DATABASE_PATH`; it can also override the local path for tests or
+operations.
+
 ## Safety
 
 - Do not commit indexer, metadata-provider, SABnzbd, or existing application API

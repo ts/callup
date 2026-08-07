@@ -13,11 +13,10 @@ continue without reconstructing the product decisions from chat.
 ### Current executable state
 
 - Vapor service executable: `callup`, listening on `127.0.0.1:8484`.
-- The canonical local instance is a macOS LaunchAgent built from clean,
-  committed `main`. It survives Codex tasks and restarts independently;
-  `/health` reports its deployed source revision. `WORKFLOW.md` defines the
-  shared verification and deployment cycle. A forced supervisor restart has
-  verified this behavior.
+- The canonical local instance is a macOS LaunchAgent showing the latest
+  coherent tested build at one dependable URL. It survives Codex tasks and
+  restarts independently; `/health` identifies its branch and revision.
+  Committing or merging is not a prerequisite for browser review.
 - Browser UI performs live, read-only TVmaze series search and displays seasons
   and episodes. The current source also offers an unranked, read-only release
   search for each season through NZBGeek. The UI labels these provider roles
@@ -28,25 +27,26 @@ continue without reconstructing the product decisions from chat.
   `CALLUP_NZBGEEK_API_KEY` exists in the process environment.
 - The API key and credential-bearing NZB download URLs are never stored in the
   source models or returned to the browser.
-- Six fixture tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
-- No database, queue mutation, SABnzbd submission, media renaming, or library
+- Thirteen tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
+- The running `sqlite-cache` build introduces the first application-store slice
+  without queue mutation. No SABnzbd submission, media renaming, or library
   management exists yet.
 
 ### Immediate next step
 
-Restart the updated build under the existing process-only NZBGeek key and verify
-the new connection indicator and unranked season-results UI. Then begin parsing
-episode coverage and traits from release titles. Discovery remains intentionally
-in-memory; only sanitized response shapes belong in test fixtures during this
-phase. Do not rank or submit downloads yet.
+Verify the cached provider views in the always-running instance, then merge the
+`sqlite-cache` source-control checkpoint when useful. Next, begin parsing
+episode coverage and traits from release titles. Do not rank or submit downloads
+yet.
 
 ### Secret-handling rule learned during setup
 
 Never ask the user to paste a secret into chat, a screenshot, a literal shell
 command, or an interactive `read` embedded in a pasted multi-line command. The
 original key was exposed during a flawed setup instruction and must not be
-reused. The replacement key exists only in the currently running process
-environment. The temporary clipboard launcher was removed after startup.
+reused. The replacement key is stored in the login Keychain and enters only the
+running process environment. The temporary clipboard launcher was removed after
+startup.
 
 Callup is the working product name. Its central action is to call up wanted
 media through existing metadata, search, and download APIs; `Lineup` names the
@@ -187,6 +187,26 @@ The primary action is **Get this season**, not profile administration.
 These are product guarantees. Provider adapters, web routes, background jobs,
 and persistence exist to uphold them.
 
+## Persistence doctrine
+
+- Callup has one application store and one read boundary. Durable product truth
+  and disposable provider caches use the same SQLite database, not separate
+  databases or parallel in-memory copies.
+- User intent, decisions, idempotency records, and externally consequential
+  workflow state are durable product truth.
+- External facts remain provider-owned. Cached snapshots include provenance,
+  fetch time, expiry, and payload schema version and may be deleted or rebuilt.
+- Views and services read through the shared store so a committed change is
+  visible consistently. Observation mechanics may evolve without introducing a
+  second source of truth.
+- Fresh cache values return immediately. Stale values also return immediately
+  while one background refresh updates the shared entry. A provider outage does
+  not erase the last useful view.
+- Credentials and credential-bearing download URLs never enter SQLite.
+- Prefer embedded SQLite for the single-node product. Add a database server only
+  after an observed need for multiple application writers or remote shared
+  storage.
+
 ## Proposed architecture
 
 ```text
@@ -293,6 +313,8 @@ concepts; its human-facing preference types remain useful.
 - [x] Make one controlled read-only season query through the indexer.
 - [x] Capture observed, sanitized provider evidence in a fixture without storing
   raw credential-bearing download URLs.
+- [x] Add one SQLite application store and cache TVmaze and normalized Newznab
+  responses with fresh/stale semantics.
 - [x] Display normalized candidates without ranking or downloading.
 - [x] Build and fixture-test a generic Newznab request/response seam for
   NZBGeek without making a live credentialed call.
@@ -354,18 +376,23 @@ concepts; its human-facing preference types remain useful.
 
 ## Decisions
 
+- 2026-08-06 — Use one embedded SQLite database through SQLiteNIO directly,
+  without Fluent. Durable product state and disposable provider cache entries
+  share one store and observation boundary while retaining distinct retention
+  rules. Start with a single cache table and migration ledger; add explicit
+  durable tables only when real product state exists.
 - 2026-08-06 — Run the fast-iteration canonical instance as a macOS LaunchAgent
-  bound to loopback. Deploy explicit, clean-main release checkpoints without
-  coupling the running service to active source edits. Defer Proxmox/systemd
+  bound to loopback. Refresh it from the current coherent tested build so one
+  dependable URL always shows the product being developed. Defer Proxmox/systemd
   deployment until durable workflow state and download mutations make a stable
   homelab release valuable. Treat Cloudflare Tunnel as later authenticated
   reachability, not process supervision.
 - 2026-08-06 — Normalize development around one canonical local instance on
-  port 8484, built from clean committed `main` and identified by its Git revision
-  in `/health`. Codex owns automated verification, coherent commits, and the
-  canonical process lifecycle; the user owns browser acceptance at useful
-  checkpoints and needs no terminal workflow. The local launcher retrieves the
-  rotated indexer key from macOS Keychain without storing it in the project.
+  port 8484, identified by branch and Git revision in `/health`. Codex owns
+  automated verification and the canonical process lifecycle; the user can
+  inspect the latest coherent build at any time without a terminal workflow or
+  merge/deploy gate. The local launcher retrieves the rotated indexer key from
+  macOS Keychain without storing it in the project.
 - 2026-08-06 — The first controlled NZBGeek season search returned 100
   candidates with sizes and publication dates, but no provider-reported episode
   coverage, resolution, or codec. Treat title parsing as required evidence
@@ -402,9 +429,8 @@ concepts; its human-facing preference types remain useful.
 
 ## Active step
 
-**Restart the updated build with environment-only NZBGeek configuration, verify
-the visible connection state and unranked season-results UI, then parse coverage
-and traits from titles. Keep discovery in-memory and do not rank or download.**
+**Verify the shared cached views now running from `sqlite-cache`, then parse
+coverage and traits from titles. Do not rank or download.**
 
 ## Open questions
 
@@ -439,6 +465,11 @@ and traits from titles. Keep discovery in-memory and do not rank or download.**
 - The `com.callup.local` LaunchAgent returned to healthy state after a forced
   restart, incrementing its launch count while preserving revision identity and
   both provider connections.
+- The `sqlite-cache` branch populated one disposable WAL database with TVmaze
+  search, episode, and normalized Newznab namespaces. All three entries survived
+  a process restart, normalized queries returned the same content, the directory
+  and database used `0700` and `0600` permissions, and no credential-bearing URL
+  entered the release cache.
 - Removing the standalone source directory fully rolls back the software
   experiment without affecting the media stack.
 
@@ -455,6 +486,7 @@ and traits from titles. Keep discovery in-memory and do not rank or download.**
 | 2026-08-06 | Gated the read-only NZBGeek route behind process environment | No credential means no external request; credential-bearing download URLs stay server-private | `/health` reports `not-configured`; release route returns HTTP 503 |
 | 2026-08-06 | Ran the first controlled NZBGeek season search and added the browser results view | Confirmed real results omit structured coverage and traits; candidates remain read-only and unranked | 100 normalized results; sanitized fixture; six tests |
 | 2026-08-06 | Installed the canonical macOS LaunchAgent | Callup runs independently on loopback from explicit release checkpoints and restarts automatically | Forced restart; `/health`; live TVmaze and NZBGeek smoke tests |
+| 2026-08-06 | Added the first unified SQLite application-store slice on `sqlite-cache` | TVmaze and normalized Newznab responses share one stale-while-refresh cache without Fluent | Twelve tests; disposable-file restart and live provider smoke tests |
 
 ## Reference
 
