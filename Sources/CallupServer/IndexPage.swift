@@ -93,8 +93,9 @@ async function loadRuntime() {
     const connected = health.indexer === 'nzbgeek';
     const details = [
       'Series and episodes: TVmaze',
-      connected ? 'Releases: NZBGeek connected' : 'Releases: NZBGeek not configured'
-    ];
+      connected ? 'Releases: NZBGeek connected' : 'Releases: NZBGeek not configured',
+      health.database === 'sqlite' ? 'Store: SQLite' : null
+    ].filter(Boolean);
     if (health.revision && health.revision !== 'unknown') {
       details.push(`Revision: ${health.revision}`);
     }

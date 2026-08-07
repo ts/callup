@@ -1,5 +1,6 @@
 import CallupCore
 import CallupNewznab
+import CallupPersistence
 import CallupTVMaze
 import Foundation
 import Vapor
@@ -12,7 +13,8 @@ enum CallupServer {
         let application = try await Application.make(environment)
 
         do {
-            configure(application)
+            let store = try await configuredStore()
+            configure(application, store: store)
             try await application.execute()
         } catch {
             application.logger.report(error: error)
@@ -23,13 +25,19 @@ enum CallupServer {
         try await application.asyncShutdown()
     }
 
-    private static func configure(_ application: Application) {
+    private static func configure(_ application: Application, store: ApplicationStore) {
         application.http.server.configuration.hostname = "127.0.0.1"
-        application.http.server.configuration.port = 8484
+        application.http.server.configuration.port = configuredPort()
 
-        let metadata = TVMazeClient()
-        let indexer = configuredIndexer()
+        let metadata = CachedTelevisionMetadataProvider(
+            upstream: TVMazeClient(),
+            store: store
+        )
+        let indexer = configuredIndexer().map {
+            CachedTelevisionReleaseIndexer(upstream: $0, store: store)
+        }
         let revision = ProcessInfo.processInfo.environment["CALLUP_REVISION"] ?? "unknown"
+        application.lifecycle.use(StoreLifecycle(store: store))
 
         application.get { _ in
             Response(
@@ -95,6 +103,7 @@ enum CallupServer {
                 mode: "read-only",
                 metadata: "tvmaze",
                 indexer: indexer == nil ? "not-configured" : "nzbgeek",
+                database: "sqlite",
                 revision: revision
             )
         }
@@ -125,6 +134,37 @@ enum CallupServer {
             return nil
         }
         return NewznabClient(provider: "nzbgeek", endpoint: endpoint, apiKey: apiKey)
+    }
+
+    private static func configuredPort() -> Int {
+        guard
+            let rawPort = ProcessInfo.processInfo.environment["CALLUP_PORT"],
+            let port = Int(rawPort),
+            (1...65_535).contains(port)
+        else {
+            return 8484
+        }
+        return port
+    }
+
+    private static func configuredStore() async throws -> ApplicationStore {
+        let environment = ProcessInfo.processInfo.environment
+        let fileURL: URL
+        if let path = environment["CALLUP_DATABASE_PATH"] {
+            fileURL = URL(fileURLWithPath: path)
+        } else {
+            #if os(macOS)
+            fileURL = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            )[0]
+                .appending(path: "Callup", directoryHint: .isDirectory)
+                .appending(path: "callup.sqlite")
+            #else
+            fileURL = URL(fileURLWithPath: "/var/lib/callup/callup.sqlite")
+            #endif
+        }
+        return try await ApplicationStore.open(fileURL: fileURL)
     }
 
     private static func indexerAbort(_ error: Error) -> Abort {
@@ -160,5 +200,14 @@ private struct HealthResponse: Content {
     let mode: String
     let metadata: String
     let indexer: String
+    let database: String
     let revision: String
+}
+
+private struct StoreLifecycle: LifecycleHandler {
+    let store: ApplicationStore
+
+    func shutdownAsync(_ application: Application) async {
+        try? await store.close()
+    }
 }
