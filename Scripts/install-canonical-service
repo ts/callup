@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+project_directory="$(cd "$(dirname "$0")/.." && pwd)"
+source_plist="$project_directory/Support/com.callup.local.plist"
+installed_plist="/Users/ts/Library/LaunchAgents/com.callup.local.plist"
+service_target="gui/$(id -u)/com.callup.local"
+
+"$project_directory/Scripts/build-canonical"
+
+/usr/bin/install -d -m 0755 /Users/ts/Library/LaunchAgents
+/usr/bin/install -d -m 0755 /Users/ts/Library/Logs/Callup
+/usr/bin/install -m 0644 "$source_plist" "$installed_plist"
+
+if launchctl print "$service_target" >/dev/null 2>&1; then
+    launchctl bootout "$service_target"
+fi
+
+launchctl bootstrap "gui/$(id -u)" "$installed_plist"
+launchctl enable "$service_target"

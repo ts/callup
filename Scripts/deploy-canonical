@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+project_directory="$(cd "$(dirname "$0")/.." && pwd)"
+"$project_directory/Scripts/build-canonical"
+
+service_target="gui/$(id -u)/com.callup.local"
+if ! launchctl print "$service_target" >/dev/null 2>&1; then
+    echo "Callup LaunchAgent is not installed. Run Scripts/install-canonical-service." >&2
+    exit 1
+fi
+
+launchctl kickstart -k "$service_target"

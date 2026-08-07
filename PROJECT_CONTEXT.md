@@ -12,10 +12,11 @@ continue without reconstructing the product decisions from chat.
 
 ### Current executable state
 
-- Vapor service executable: `callup`, listening on `0.0.0.0:8484`.
-- The canonical local instance runs from clean, committed `main`; `/health`
-  reports its source revision. `WORKFLOW.md` defines the shared verification
-  cycle and `Scripts/run-canonical` enforces it.
+- Vapor service executable: `callup`, listening on `127.0.0.1:8484`.
+- The canonical local instance is a macOS LaunchAgent built from clean,
+  committed `main`. It survives Codex tasks and restarts independently;
+  `/health` reports its deployed source revision. `WORKFLOW.md` defines the
+  shared verification and deployment cycle.
 - Browser UI performs live, read-only TVmaze series search and displays seasons
   and episodes. The current source also offers an unranked, read-only release
   search for each season through NZBGeek. The UI labels these provider roles
@@ -352,6 +353,12 @@ concepts; its human-facing preference types remain useful.
 
 ## Decisions
 
+- 2026-08-06 — Run the fast-iteration canonical instance as a macOS LaunchAgent
+  bound to loopback. Deploy explicit, clean-main release checkpoints without
+  coupling the running service to active source edits. Defer Proxmox/systemd
+  deployment until durable workflow state and download mutations make a stable
+  homelab release valuable. Treat Cloudflare Tunnel as later authenticated
+  reachability, not process supervision.
 - 2026-08-06 — Normalize development around one canonical local instance on
   port 8484, built from clean committed `main` and identified by its Git revision
   in `/health`. Codex owns automated verification, coherent commits, and the

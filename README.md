@@ -20,7 +20,8 @@ swift run callup
 Open <http://localhost:8484>. The health endpoint is at `/health`.
 
 For the shared, revision-identifiable local instance, follow
-[`WORKFLOW.md`](WORKFLOW.md) and use `Scripts/run-canonical`.
+[`WORKFLOW.md`](WORKFLOW.md). It runs as a macOS LaunchAgent independently of an
+active Codex task.
 
 The current API surface is intentionally small:
 

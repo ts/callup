@@ -24,7 +24,7 @@ enum CallupServer {
     }
 
     private static func configure(_ application: Application) {
-        application.http.server.configuration.hostname = "0.0.0.0"
+        application.http.server.configuration.hostname = "127.0.0.1"
         application.http.server.configuration.port = 8484
 
         let metadata = TVMazeClient()

@@ -2,12 +2,13 @@
 
 ## Canonical local instance
 
-The shared canonical instance is the service at <http://localhost:8484>. It has
-three invariants:
+The shared canonical instance is the `com.callup.local` macOS LaunchAgent at
+<http://localhost:8484>. It has four invariants:
 
-1. It runs from the `main` branch.
-2. Its working tree was clean when it started.
-3. `/health` reports the short Git revision used to start it.
+1. Its release binary was built from a clean, committed `main`.
+2. Active source edits do not change or restart the deployed checkpoint.
+3. `launchd` starts it at login and restarts it if it exits.
+4. `/health` reports the short Git revision used to build it.
 
 This makes the browser instance understandable to both the user and Codex. A
 healthy process is not necessarily current; its reported revision must match
@@ -20,8 +21,9 @@ durable handoff, commits a coherent result, and starts or restarts the canonical
 instance at agreed checkpoints. The user needs no terminal workflow and performs
 browser acceptance when useful.
 
-Restarting is an explicit handoff point because the NZBGeek key belongs only to
-the service process or macOS Keychain. Never copy it into chat, source, command
+Deployment is an explicit checkpoint. Restarting after every build would make
+the review target unstable and is unnecessary. The NZBGeek key belongs only to
+the service process or macOS Keychain; never copy it into chat, source, command
 arguments, logs, fixtures, or browser-visible responses.
 
 ## One-time credential setup
@@ -32,20 +34,33 @@ Create a macOS Keychain password item with:
 - Account: the output of `id -un`
 - Password: the rotated NZBGeek API key
 
-The launcher reads this item directly. The key remains outside the repository
-and is passed only in the child service's environment.
+The service reads this item directly. The key remains outside the repository and
+is passed only in the child service's environment. Manual Keychain creation is
+temporary development bootstrap, not the intended product configuration UX.
 
-## Start or restart
+## Install once
 
-Codex stops the existing Callup process and runs:
+Codex installs the user LaunchAgent with:
 
 ```bash
-Scripts/run-canonical
+Scripts/install-canonical-service
 ```
 
-The launcher refuses to start from a non-`main` branch or a dirty working tree,
-builds the committed source, retrieves the key from Keychain when it is not
-already in the environment, and starts Callup on port 8484.
+It builds a release checkpoint, installs the agent, and starts Callup. The agent
+binds only to `127.0.0.1:8484`; it is not exposed to the LAN or Internet.
+
+## Deploy a checkpoint
+
+After committing a coherent change, Codex runs:
+
+```bash
+Scripts/deploy-canonical
+```
+
+The script refuses non-`main` or dirty source, builds the release binary, records
+the revision, and asks `launchd` to restart the service. If a build fails, the
+currently running checkpoint is left alone. `Scripts/run-canonical` remains a
+foreground troubleshooting tool, not the normal runtime.
 
 The user can ask Codex to restart the canonical instance at any time. Verify the
 exact running revision at <http://localhost:8484/health> before browser
@@ -57,7 +72,7 @@ acceptance.
 2. Run automated tests and relevant safety checks.
 3. Update `PROJECT_CONTEXT.md` when the durable state or next step changes.
 4. Commit the result on `main`.
-5. Codex restarts the canonical instance when the user wants to verify that
+5. Codex deploys the canonical instance when the user wants to verify that
    checkpoint.
 6. Record any observed provider behavior in sanitized fixtures.
 
