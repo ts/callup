@@ -5,16 +5,12 @@ set -euo pipefail
 project_directory="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_directory"
 
-branch="$(git branch --show-current)"
-if [[ "$branch" != "main" ]]; then
-    echo "Canonical Callup must be built from main; current branch is '$branch'." >&2
-    exit 1
-fi
-
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "Canonical Callup requires a clean working tree. Commit or stash changes first." >&2
-    exit 1
-fi
-
 /usr/bin/swift build -c release
-git rev-parse --short HEAD > .build/canonical-revision
+
+branch="$(git branch --show-current)"
+revision="$(git rev-parse --short HEAD)"
+if [[ -n "$(git status --porcelain)" ]]; then
+    revision="${revision}-dirty"
+fi
+
+printf '%s@%s\n' "$branch" "$revision" > .build/canonical-revision

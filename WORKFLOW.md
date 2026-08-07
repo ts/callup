@@ -5,26 +5,28 @@
 The shared canonical instance is the `com.callup.local` macOS LaunchAgent at
 <http://localhost:8484>. It has four invariants:
 
-1. Its release binary was built from a clean, committed `main`.
-2. Active source edits do not change or restart the deployed checkpoint.
+1. It is the latest coherent build that Codex has finished and verified, from
+   whatever branch is currently under development.
+2. It stays available independently of Codex tasks and terminal sessions.
 3. `launchd` starts it at login and restarts it if it exits.
-4. `/health` reports the short Git revision used to build it.
+4. `/health` reports the branch, short Git revision, and a `dirty` marker when
+   the build included uncommitted source.
 
-This makes the browser instance understandable to both the user and Codex. A
-healthy process is not necessarily current; its reported revision must match
-`git rev-parse --short HEAD`.
+"Canonical" means one dependable address and process, not a stable release
+channel. During discovery, seeing the current product is more useful than
+protecting an older `main` checkpoint.
 
 ## Responsibilities
 
 Codex implements changes, runs proportionate automated checks, updates the
-durable handoff, commits a coherent result, and starts or restarts the canonical
-instance at agreed checkpoints. The user needs no terminal workflow and performs
-browser acceptance when useful.
+durable handoff, and refreshes the canonical instance as part of finishing each
+coherent change. Committing and merging are source-control concerns, not gates
+to browser review. The user needs no terminal workflow and can open the same URL
+for browser acceptance whenever useful.
 
-Deployment is an explicit checkpoint. Restarting after every build would make
-the review target unstable and is unnecessary. The NZBGeek key belongs only to
-the service process or macOS Keychain; never copy it into chat, source, command
-arguments, logs, fixtures, or browser-visible responses.
+The NZBGeek key belongs only to the service process or macOS Keychain; never
+copy it into chat, source, command arguments, logs, fixtures, or browser-visible
+responses.
 
 ## One-time credential setup
 
@@ -49,7 +51,7 @@ Scripts/install-canonical-service
 It builds a release checkpoint, installs the agent, and starts Callup. The agent
 binds only to `127.0.0.1:8484`; it is not exposed to the LAN or Internet.
 
-## Deploy a checkpoint
+## Refresh the running product
 
 After committing a coherent change, Codex runs:
 
@@ -57,23 +59,22 @@ After committing a coherent change, Codex runs:
 Scripts/deploy-canonical
 ```
 
-The script refuses non-`main` or dirty source, builds the release binary, records
-the revision, and asks `launchd` to restart the service. If a build fails, the
-currently running checkpoint is left alone. `Scripts/run-canonical` remains a
-foreground troubleshooting tool, not the normal runtime.
+The script builds the current checkout, records its branch and revision, and
+asks `launchd` to restart the service. Dirty builds are identified explicitly.
+If a build fails, the currently running product is left alone.
+`Scripts/run-canonical` remains a foreground troubleshooting tool, not the
+normal runtime.
 
-The user can ask Codex to restart the canonical instance at any time. Verify the
-exact running revision at <http://localhost:8484/health> before browser
-acceptance.
+Codex normally performs this refresh automatically after a coherent tested
+change. Verify the exact running source at <http://localhost:8484/health>.
 
 ## Normal change cycle
 
 1. Implement a coherent change.
 2. Run automated tests and relevant safety checks.
 3. Update `PROJECT_CONTEXT.md` when the durable state or next step changes.
-4. Commit the result on `main`.
-5. Codex deploys the canonical instance when the user wants to verify that
-   checkpoint.
+4. Refresh the always-running instance at <http://localhost:8484>.
+5. Commit coherent source-control checkpoints and merge when useful.
 6. Record any observed provider behavior in sanitized fixtures.
 
 The eventual Linux homelab service should preserve these same invariants using
