@@ -16,7 +16,8 @@ continue without reconstructing the product decisions from chat.
 - The canonical local instance is a macOS LaunchAgent built from clean,
   committed `main`. It survives Codex tasks and restarts independently;
   `/health` reports its deployed source revision. `WORKFLOW.md` defines the
-  shared verification and deployment cycle.
+  shared verification and deployment cycle. A forced supervisor restart has
+  verified this behavior.
 - Browser UI performs live, read-only TVmaze series search and displays seasons
   and episodes. The current source also offers an unranked, read-only release
   search for each season through NZBGeek. The UI labels these provider roles
@@ -431,10 +432,13 @@ and traits from titles. Keep discovery in-memory and do not rank or download.**
   the first normalized episode was `S01E01`, "Everything Is Fine."
 - The browser UI supports live series search and displays grouped seasons and
   episodes.
-- A controlled search for TVmaze series `2790`, season 1, returned 100 normalized
-  NZBGeek candidates. All had size and publication date; none had reported
-  coverage, resolution, or codec. No URL or credential pattern appeared in the
-  browser-safe JSON.
+- A controlled search for TVmaze series `2790`, season 1, reported 202 NZBGeek
+  candidates and returned the first page of 100. All inspected candidates had
+  size and publication date; none had reported coverage, resolution, or codec.
+  No URL or credential pattern appeared in the browser-safe JSON.
+- The `com.callup.local` LaunchAgent returned to healthy state after a forced
+  restart, incrementing its launch count while preserving revision identity and
+  both provider connections.
 - Removing the standalone source directory fully rolls back the software
   experiment without affecting the media stack.
 
@@ -450,6 +454,7 @@ and traits from titles. Keep discovery in-memory and do not rank or download.**
 | 2026-08-06 | Added the generic Newznab seam for NZBGeek | TV search requests redact credentials; XML becomes safe candidate and coverage models | Six total tests; no live indexer request |
 | 2026-08-06 | Gated the read-only NZBGeek route behind process environment | No credential means no external request; credential-bearing download URLs stay server-private | `/health` reports `not-configured`; release route returns HTTP 503 |
 | 2026-08-06 | Ran the first controlled NZBGeek season search and added the browser results view | Confirmed real results omit structured coverage and traits; candidates remain read-only and unranked | 100 normalized results; sanitized fixture; six tests |
+| 2026-08-06 | Installed the canonical macOS LaunchAgent | Callup runs independently on loopback from explicit release checkpoints and restarts automatically | Forced restart; `/health`; live TVmaze and NZBGeek smoke tests |
 
 ## Reference
 
