@@ -20,25 +20,21 @@ protecting an older `main` checkpoint.
 
 Codex implements changes, runs proportionate automated checks, updates the
 durable handoff, and refreshes the canonical instance as part of finishing each
-coherent change. Committing and merging are source-control concerns, not gates
-to browser review. The user needs no terminal workflow and can open the same URL
-for browser acceptance whenever useful.
+coherent change. Codex does not probe, curl, smoke-test, or otherwise verify the
+live instance after deployment; browser acceptance belongs to the user.
+Committing and merging are source-control concerns, not gates to browser review.
 
-The NZBGeek key belongs only to the service process or macOS Keychain; never
-copy it into chat, source, command arguments, logs, fixtures, or browser-visible
+Provider credentials belong only to the running Callup service; never copy them
+into chat, source, command arguments, logs, fixtures, or browser-visible
 responses.
 
-## One-time credential setup
+## Connection setup
 
-Create a macOS Keychain password item with:
-
-- Name: `callup-nzbgeek-api-key`
-- Account: the output of `id -un`
-- Password: the rotated NZBGeek API key
-
-The service reads this item directly. The key remains outside the repository and
-is passed only in the child service's environment. Manual Keychain creation is
-temporary development bootstrap, not the intended product configuration UX.
+Open **Connections** in Callup to configure NZBGeek and either SABnzbd or
+NZBGet. Secrets are written to an owner-only file outside the repository and
+never returned to the browser after submission. The existing macOS Keychain
+item and environment variables remain optional development and deployment
+fallbacks; neither is required to start Callup.
 
 ## Install once
 
@@ -53,27 +49,27 @@ binds only to `127.0.0.1:8484`; it is not exposed to the LAN or Internet.
 
 ## Refresh the running product
 
-After committing a coherent change, Codex runs:
+After a coherent change, restart the live app from the repository root:
 
 ```bash
-Scripts/deploy-canonical
+./restart
 ```
 
-The script builds the current checkout, records its branch and revision, and
+This is the public operational command. It installs the LaunchAgent if needed;
+otherwise it builds the current checkout, records its branch and revision, and
 asks `launchd` to restart the service. Dirty builds are identified explicitly.
-If a build fails, the currently running product is left alone.
-`Scripts/run-canonical` remains a foreground troubleshooting tool, not the
-normal runtime.
-
-Codex normally performs this refresh automatically after a coherent tested
-change. Verify the exact running source at <http://localhost:8484/health>.
+If a build fails, the currently running product is left alone. The scripts in
+`Scripts/` are implementation details and troubleshooting tools. Codex performs
+this refresh automatically after a coherent tested change and stops when
+deployment succeeds, without live verification.
 
 ## Normal change cycle
 
 1. Implement a coherent change.
 2. Run automated tests and relevant safety checks.
 3. Update `PROJECT_CONTEXT.md` when the durable state or next step changes.
-4. Refresh the always-running instance at <http://localhost:8484>.
+4. Refresh the always-running instance at <http://localhost:8484> without
+   verifying it live afterward.
 5. Commit coherent source-control checkpoints and merge when useful.
 6. Record any observed provider behavior in sanitized fixtures.
 

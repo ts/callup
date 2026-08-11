@@ -17,36 +17,54 @@ continue without reconstructing the product decisions from chat.
   coherent tested build at one dependable URL. It survives Codex tasks and
   restarts independently; `/health` identifies its branch and revision.
   Committing or merging is not a prerequisite for browser review.
-- Browser UI performs live, read-only TVmaze series search and displays seasons
-  and episodes. The current source also offers an unranked, read-only release
-  search for each season through NZBGeek. The UI labels these provider roles
-  separately so indexer connectivity does not imply metadata search switched.
+- Browser UI performs live TVmaze series search, persists an intentionally
+  minimal tracked-shows list, labels each tracked show as ended or with its next
+  announced air date, and displays seasons and episodes. The current source also
+  offers an unranked, read-only release search for each season
+  through NZBGeek. The UI labels these provider roles separately so indexer
+  connectivity does not imply metadata search switched.
+- New tracked shows monitor episodes airing today or later by default. A
+  show-level All/Future/None policy controls newly discovered episodes, while
+  season and episode checkboxes remain explicit durable overrides. Existing
+  tracked lineups retain their prior all-episodes baseline.
 - Generic Newznab code builds TV searches and normalizes XML responses.
   NZBGeek is the first configured indexer.
-- `GET /api/tv/releases` is read-only and disabled unless
-  `CALLUP_NZBGEEK_API_KEY` exists in the process environment.
-- The API key and credential-bearing NZB download URLs are never stored in the
-  source models or returned to the browser.
-- Thirteen tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
+- A minimal Settings panel configures NZBGeek and one download client,
+  choosing SABnzbd or NZBGet. SABnzbd connections can accept one explicitly
+  confirmed indexer result through a manual **Send to SABnzbd** action.
+- Download activity and completed history live in a separate, on-demand
+  Downloads panel instead of occupying the tracked-shows flow.
+- Callup fetches the NZB server-side, uploads it to SABnzbd, persists the
+  provider reference and returned SAB job ID, prevents repeat submission, and
+  reconciles sending, snatched, downloading, downloaded, and blocked states.
+  A lifecycle-managed Swift worker now checks active SABnzbd jobs at startup
+  and once per minute; opening Downloads only reads the durable state.
+  Downloaded episodes render unchecked in their season checklist and are
+  therefore omitted from later checked-episode searches.
+- Connection secrets live in an owner-only file beside SQLite, never in SQLite,
+  source models, logs, or browser responses. Environment and macOS Keychain
+  loading remain optional fallbacks rather than setup requirements.
+- Fifty tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
 - The running `sqlite-cache` build introduces the first application-store slice
-  without queue mutation. No SABnzbd submission, media renaming, or library
-  management exists yet.
+  with one explicitly confirmed manual SABnzbd submission seam. No automated
+  recommendation queueing, media renaming, or library management exists yet.
 
 ### Immediate next step
 
-Verify the cached provider views in the always-running instance, then merge the
-`sqlite-cache` source-control checkpoint when useful. Next, begin parsing
-episode coverage and traits from release titles. Do not rank or submit downloads
-yet.
+Send one intentionally chosen result to the existing SABnzbd instance and
+verify that its durable state progresses through snatched/downloading/downloaded
+in Callup. This remains a manual proof and does not trigger automatic
+acquisition from the lineup.
 
 ### Secret-handling rule learned during setup
 
 Never ask the user to paste a secret into chat, a screenshot, a literal shell
 command, or an interactive `read` embedded in a pasted multi-line command. The
 original key was exposed during a flawed setup instruction and must not be
-reused. The replacement key is stored in the login Keychain and enters only the
-running process environment. The temporary clipboard launcher was removed after
-startup.
+reused. The replacement key can remain in the login Keychain as a development
+fallback, while the in-app Connections panel is the normal setup path. Saved
+secrets remain server-side in an owner-only file. The temporary clipboard
+launcher was removed after startup.
 
 Callup is the working product name. Its central action is to call up wanted
 media through existing metadata, search, and download APIs; `Lineup` names the
@@ -87,10 +105,10 @@ and history are a primary value proposition—not a later convenience.
 Given a series and season, find available releases for its episodes, choose sane
 candidates, show the choices, and send the approved downloads to SABnzbd.
 
-Television is the first vertical slice, not the product boundary. The app does
-not need to organize the resulting media to make the acquisition workflow
-valuable. SABnzbd remains responsible for downloading and its existing category
-paths.
+Television is the first vertical slice, not the product boundary. SABnzbd
+remains responsible for downloading, while Callup supplies a thin destination
+layer: every tracked show gets its own folder and season folders are enabled by
+default as a per-show setting.
 
 ## MVP interaction
 
@@ -141,7 +159,8 @@ The primary action is **Get this season**, not profile administration.
 
 ### Deferred from the first vertical slice
 
-- Renaming, sorting, moving, importing, or owning a media library.
+- Renaming, moving, importing, or owning a media library beyond choosing the
+  show and optional season destination folders at submission time.
 - Sonarr configuration or compatibility as a product requirement.
 - Automatic upgrades of existing files.
 - Additional live indexers and download clients. The domain and persistence
@@ -316,13 +335,19 @@ concepts; its human-facing preference types remain useful.
 - [x] Add one SQLite application store and cache TVmaze and normalized Newznab
   responses with fresh/stale semantics.
 - [x] Display normalized candidates without ranking or downloading.
+- [x] Persist a minimal tracked-series checklist where every season and episode
+  is included by default and the user may uncheck either level.
+  Season checkboxes are bulk controls, not gates: an episode remains selectable
+  under an unchecked season and promotes that season to a partial selection.
+- [x] Show one concise lifecycle signal on tracked cards: ended or the next
+  announced TVmaze air date.
 - [x] Build and fixture-test a generic Newznab request/response seam for
   NZBGeek without making a live credentialed call.
 - [x] Verify TVmaze decoding using captured, secret-free fixtures.
 
 ### Milestone 2 — Understandable recommendations
 
-- [ ] Parse standard release titles into episode, resolution, codec, and source
+- [x] Parse standard release titles into episode, resolution, codec, and source
   traits.
 - [ ] Apply resolution and size rules.
 - [ ] Recommend one candidate per episode.
@@ -332,16 +357,20 @@ concepts; its human-facing preference types remain useful.
 ### Milestone 3 — Queue to SABnzbd
 
 - [ ] Display the complete queue plan before mutation.
-- [ ] Submit one approved candidate to the existing SAB category.
-- [ ] Persist the provider reference and SAB job ID transactionally.
-- [ ] Reconcile queued, downloading, completed, and failed state.
-- [ ] Prove repeated submission and process restart cannot duplicate a job.
+- [x] Submit one explicitly confirmed television candidate to a Callup-managed
+  SABnzbd category that targets the tracked show's folder and, by default, its
+  season folder.
+- [x] Reserve the provider reference before submission and persist the returned
+  SAB job ID.
+- [x] Reconcile snatched, downloading, downloaded, and blocked state.
+- [x] Prevent repeated submission across double-clicks and process restarts.
 - [ ] Expand from one episode to **Queue recommended season**.
 
 ### Milestone 4 — Make it faster
 
 - [ ] Retry missing episodes without repeating successful work.
-- [ ] Remember the last useful preferences per series or globally.
+- [x] Remember a preferred resolution and video codec per tracked series and
+  rank exact matches first without hiding alternatives.
 - [ ] Add a lightweight monitored-season scheduler only after manual acquisition
   is trustworthy.
 - [ ] Add season-pack selection using the existing candidate-coverage model,
@@ -349,6 +378,7 @@ concepts; its human-facing preference types remain useful.
 
 ### Subsequent product capabilities
 
+- A full TVmaze schedule and calendar for tracked shows.
 - Named profiles and per-request overrides using the same transparent policy
   model.
 - Multiple indexers with concurrent search, health, provenance, and duplicate
@@ -429,8 +459,8 @@ concepts; its human-facing preference types remain useful.
 
 ## Active step
 
-**Verify the shared cached views now running from `sqlite-cache`, then parse
-coverage and traits from titles. Do not rank or download.**
+**Return to resolution and size rules before any automatic queueing. Manual SAB
+submission and durable episode-level reconciliation are now verified.**
 
 ## Open questions
 
@@ -441,6 +471,10 @@ coverage and traits from titles. Do not rank or download.**
   release normalization. Live capabilities discovery remains unverified.
 - TVmaze is the initial television metadata provider and requires no API key for
   the selected public endpoints.
+- Series identity must cross the metadata/indexer boundary using one canonical
+  identifier per request. Prefer TheTVDB for Newznab TV searches; reject an
+  explicit conflicting result ID, but accept unlabeled results from that
+  identifier-scoped search because NZBGeek does not echo IDs per result.
 - `UNKNOWN`: Whether the first release should accept only indexer search results
   or also consume its feed for later monitoring.
 - `UNKNOWN`: Authentication boundary before exposure through Caddy or Tailscale.
@@ -448,7 +482,9 @@ coverage and traits from titles. Do not rank or download.**
 ## Known-good and rollback
 
 - Sonarr, SABnzbd, and the indexer continue to operate independently.
-- Callup has no credentials and makes no external writes.
+- Callup stores configured provider credentials outside SQLite. Its only
+  external mutation is an explicitly confirmed, idempotently reserved manual
+  NZB submission to SABnzbd.
 - With no `CALLUP_NZBGEEK_API_KEY`, `/health` reports the indexer as
   `not-configured` and `/api/tv/releases` returns HTTP 503 without an external
   request.
@@ -457,7 +493,8 @@ coverage and traits from titles. Do not rank or download.**
 - `GET /api/tv/series/2790/seasons` returned four seasons of 13 episodes each;
   the first normalized episode was `S01E01`, "Everything Is Fine."
 - The browser UI supports live series search and displays grouped seasons and
-  episodes.
+  episodes. Release candidates are collated beneath their matching TVmaze
+  episode, and saved SAB states are reflected on the episode after reload.
 - A controlled search for TVmaze series `2790`, season 1, reported 202 NZBGeek
   candidates and returned the first page of 100. All inspected candidates had
   size and publication date; none had reported coverage, resolution, or codec.
@@ -485,8 +522,19 @@ coverage and traits from titles. Do not rank or download.**
 | 2026-08-06 | Added the generic Newznab seam for NZBGeek | TV search requests redact credentials; XML becomes safe candidate and coverage models | Six total tests; no live indexer request |
 | 2026-08-06 | Gated the read-only NZBGeek route behind process environment | No credential means no external request; credential-bearing download URLs stay server-private | `/health` reports `not-configured`; release route returns HTTP 503 |
 | 2026-08-06 | Ran the first controlled NZBGeek season search and added the browser results view | Confirmed real results omit structured coverage and traits; candidates remain read-only and unranked | 100 normalized results; sanitized fixture; six tests |
+| 2026-08-06 | Parsed television coverage and release traits from NZB titles | Single episodes, multi-episodes, ranges, season packs, resolution, codec, and source are normalized without ranking or downloading | Fixture and parser edge-case tests |
 | 2026-08-06 | Installed the canonical macOS LaunchAgent | Callup runs independently on loopback from explicit release checkpoints and restarts automatically | Forced restart; `/health`; live TVmaze and NZBGeek smoke tests |
 | 2026-08-06 | Added the first unified SQLite application-store slice on `sqlite-cache` | TVmaze and normalized Newznab responses share one stale-while-refresh cache without Fluent | Twelve tests; disposable-file restart and live provider smoke tests |
+| 2026-08-06 | Added the minimal tracked-shows list | Add/remove is durable product intent keyed by provider identity; it does not yet imply monitoring or acquisition | Store restart tests and live local API round-trip; eighteen tests |
+| 2026-08-06 | Added the cascading television lineup checklist | A tracked series includes everything; only unchecked seasons and episodes are stored | Persistence tests, JavaScript syntax check, and local API round-trip |
+| 2026-08-06 | Added minimal in-app provider connections | NZBGeek, SABnzbd, and NZBGet share one Connections surface; secrets use an owner-only file and download clients are probed read-only before save | Twenty-three tests; settings API smoke test confirms secrets are omitted |
+| 2026-08-06 | Added the first manual SABnzbd handoff | One confirmed result is fetched server-side, uploaded as an NZB, deduplicated durably, and reconciled through a small visible download lifecycle | Thirty-one tests; no credential-bearing URL reaches the browser or SABnzbd |
+| 2026-08-06 | Joined release and download history back to TVmaze episodes | Season searches render candidates beneath matching episodes; durable submissions retain/backfill episode identity and mark the lineup without changing wanted state | Thirty-two tests; embedded JavaScript syntax check |
+| 2026-08-06 | Added a minimal airing signal to tracked-show cards | Ended shows are labeled directly; active shows derive their next announced date from the cached TVmaze episode feed, leaving the full schedule and calendar for later | Thirty-three tests; embedded JavaScript syntax check |
+| 2026-08-06 | Moved secondary utilities out of the tracked-shows flow | Settings owns provider connections; Downloads opens activity and completed history on demand without background refreshes forcing it visible | Thirty-three tests; embedded JavaScript syntax check |
+| 2026-08-07 | Closed a same-title television identity collision | TVmaze `567` (Gossip Girl, 2007) searches Newznab by its canonical TheTVDB ID `80547`; explicit conflicting result IDs are rejected, unlabeled identifier-scoped results remain usable, and SAB submission re-verifies the exact series and episodes | Thirty-seven tests; corrected an initial multi-ID query that returned zero results; cleared 80 transient cache entries |
+| 2026-08-10 | Moved SABnzbd reconciliation into a lifecycle-managed Swift worker | Active downloads progress without the Downloads screen being open; the worker runs immediately, repeats once per minute, isolates per-job failures, and cancels before SQLite closes | Forty-seven tests, including worker start/stop and partial-failure coverage |
+| 2026-08-10 | Separated show tracking from episode monitoring | New shows default to future episodes; All/Future/None supplies the baseline for newly discovered episodes and checkboxes persist explicit overrides without changing the policy | Fifty tests, including cutoff, override, persistence, and legacy-payload coverage; embedded JavaScript syntax check |
 
 ## Reference
 
@@ -494,4 +542,5 @@ coverage and traits from titles. Do not rank or download.**
 - SABnzbd: `http://10.69.42.22:8080`
 - Existing indexer: NZBGeek through its Newznab-compatible API
 - TV metadata API: `https://api.tvmaze.com`
-- Secrets: runtime only; never commit API keys or provider URLs containing keys
+- Secrets: owner-only connection file or runtime injection; never commit API
+  keys or provider URLs containing keys
