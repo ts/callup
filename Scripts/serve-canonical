@@ -12,19 +12,20 @@ if [[ ! -x "$binary" ]] || [[ ! -s "$revision_file" ]]; then
     exit 1
 fi
 
-keychain_account="$(id -un)"
-if ! CALLUP_NZBGEEK_API_KEY="$(
-    /usr/bin/security find-generic-password \
-        -a "$keychain_account" \
-        -s "callup-nzbgeek-api-key" \
-        -w
-)"; then
-    echo "NZBGeek credential is unavailable in the login Keychain." >&2
-    exit 1
+if [[ -z "${CALLUP_NZBGEEK_API_KEY:-}" ]]; then
+    keychain_account="$(id -un)"
+    if CALLUP_NZBGEEK_API_KEY="$(
+        /usr/bin/security find-generic-password \
+            -a "$keychain_account" \
+            -s "callup-nzbgeek-api-key" \
+            -w 2>/dev/null
+    )"; then
+        export CALLUP_NZBGEEK_API_KEY
+    fi
 fi
 
 CALLUP_REVISION="$(tr -d '\n' < "$revision_file")"
-export CALLUP_NZBGEEK_API_KEY CALLUP_REVISION
+export CALLUP_REVISION
 
 cd "$project_directory"
 exec "$binary"

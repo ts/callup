@@ -13,23 +13,17 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 if [[ -z "${CALLUP_NZBGEEK_API_KEY:-}" ]]; then
-    if [[ "$(uname -s)" != "Darwin" ]] || ! command -v security >/dev/null 2>&1; then
-        echo "CALLUP_NZBGEEK_API_KEY is not set and macOS Keychain is unavailable." >&2
-        exit 1
+    if [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
+        keychain_account="$(id -un)"
+        if CALLUP_NZBGEEK_API_KEY="$(
+            security find-generic-password \
+                -a "$keychain_account" \
+                -s "callup-nzbgeek-api-key" \
+                -w 2>/dev/null
+        )"; then
+            export CALLUP_NZBGEEK_API_KEY
+        fi
     fi
-
-    keychain_account="$(id -un)"
-    if ! CALLUP_NZBGEEK_API_KEY="$(
-        security find-generic-password \
-            -a "$keychain_account" \
-            -s "callup-nzbgeek-api-key" \
-            -w
-    )"; then
-        echo "NZBGeek key not found in macOS Keychain." >&2
-        echo "Create a password item named 'callup-nzbgeek-api-key' for account '$keychain_account'." >&2
-        exit 1
-    fi
-    export CALLUP_NZBGEEK_API_KEY
 fi
 
 export CALLUP_REVISION="${branch}@${revision}"

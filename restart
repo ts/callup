@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+project_directory="$(cd "$(dirname "$0")" && pwd)"
+service_target="gui/$(id -u)/com.callup.local"
+
+if launchctl print "$service_target" >/dev/null 2>&1; then
+    "$project_directory/Scripts/deploy-canonical"
+else
+    "$project_directory/Scripts/install-canonical-service"
+    revision="$(tr -d '\n' < "$project_directory/.build/canonical-revision")"
+    echo
+    echo "Callup is running at http://localhost:8484"
+    echo "Build: $revision"
+fi

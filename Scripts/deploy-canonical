@@ -12,3 +12,8 @@ if ! launchctl print "$service_target" >/dev/null 2>&1; then
 fi
 
 launchctl kickstart -k "$service_target"
+
+revision="$(tr -d '\n' < "$project_directory/.build/canonical-revision")"
+echo
+echo "Callup restarted at http://localhost:8484"
+echo "Build: $revision"
