@@ -27,6 +27,10 @@ continue without reconstructing the product decisions from chat.
   show-level All/Future/None policy controls newly discovered episodes, while
   season and episode checkboxes remain explicit durable overrides. Existing
   tracked lineups retain their prior all-episodes baseline.
+- The domain now treats episodes and movies as the same atomic acquisition
+  shape: a canonical leaf plus optional ancestors. Tracked roots share one
+  kind-keyed SQLite table, while television retains only its genuinely
+  media-specific sparse episode policy.
 - Generic Newznab code builds TV searches and normalizes XML responses.
   NZBGeek is the first configured indexer.
 - A minimal Settings panel configures NZBGeek and one download client,
@@ -44,17 +48,16 @@ continue without reconstructing the product decisions from chat.
 - Connection secrets live in an owner-only file beside SQLite, never in SQLite,
   source models, logs, or browser responses. Environment and macOS Keychain
   loading remain optional fallbacks rather than setup requirements.
-- Fifty tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
+- Fifty-five tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
 - The running `sqlite-cache` build introduces the first application-store slice
   with one explicitly confirmed manual SABnzbd submission seam. No automated
   recommendation queueing, media renaming, or library management exists yet.
 
 ### Immediate next step
 
-Send one intentionally chosen result to the existing SABnzbd instance and
-verify that its durable state progresses through snatched/downloading/downloaded
-in Callup. This remains a manual proof and does not trigger automatic
-acquisition from the lineup.
+Complete the atomic media-model checkpoint, then add the first read-only movie
+metadata search. Movies must prove the shared model without introducing a
+parallel application or disturbing the working television flow.
 
 ### Secret-handling rule learned during setup
 
@@ -267,23 +270,28 @@ limited to one.
 ## Minimal domain model
 
 ```text
-Media(id, kind, metadataProviderID, externalID, title, attributes)
-WorkUnit(id, mediaID, kind, ordinal?, title, attributes)
-AcquisitionTarget(id, mediaID, targetKind, attributes)
-Policy(id, name, mediaKind?, preferences)
-Search(id, targetID, policySnapshot, state)
-Provider(id, kind, adapterType, displayName, enabled, priority)
-Candidate(id, searchID, providerID, title, sizeBytes, parsedTraits, providerRef)
-CandidateCoverage(candidateID, workUnitID)
-Decision(candidateID, disposition, rank, reasons[])
-Download(id, candidateID, clientID, clientJobID, state, lastObservedAt)
+MediaReference(kind, providerReference)
+AcquisitionTarget(mediaReference, ancestors[])
+AcquisitionContext(targets[])
+TrackedMedia(kind, metadataPayload, settingsPayload, addedAt)
+Candidate(providerReference, title, size, traits, reportedMediaIDs, coverage)
+Download(candidateReference, acquisitionContext, clientJobID, state)
 ```
 
-The initial schema may use JSON columns for domain attributes, raw provider
-payloads, preferences, and parsed traits while each media vocabulary stabilizes.
-`CandidateCoverage` is intentionally many-to-many: a release may cover an
-episode, several episodes, a season, an album, selected tracks, a movie, or a
-particular book edition.
+The canonical downloadable unit is a leaf media reference. An episode and a
+movie are therefore the same acquisition shape: the episode has a series among
+its ancestors, while the movie may optionally have a collection ancestor.
+Hierarchy affects navigation, inheritance, and presentation; it does not create
+a separate download mechanism. A candidate remains separate from the media it
+claims to cover, and download state belongs to the acquisition attempt rather
+than to the media item.
+
+SQLite stores all tracked roots in one `tracked_media` table keyed by media
+kind and provider identity. Typed metadata and settings remain JSON payloads
+while each media vocabulary stabilizes. Television keeps a separate sparse
+lineup policy because tracking a series and wanting its episode leaves are
+distinct intentions. Download submissions store one shared acquisition context
+instead of television-only series and episode columns.
 
 `Policy` is the useful version of profile administration: named, understandable
 preferences with defaults, optional media-specific fields, and per-request
@@ -450,6 +458,10 @@ concepts; its human-facing preference types remain useful.
   activity, and history are shared; metadata and matching remain media-specific.
 - 2026-08-05 — Identity, normalization, deterministic selection, explanation,
   idempotency, and durable state are explicit product and engineering tenets.
+- 2026-08-10 — Model every canonical downloadable leaf as a media reference
+  with optional ancestors. Episodes and movies share one acquisition context;
+  media-specific metadata, intent rules, preferences, and presentation remain
+  typed at the edges.
 - 2026-08-06 — Use TVmaze for the first read-only television discovery slice.
   Its public API requires no credential and supplies fuzzy series search and
   complete episode lists. Keep provider IDs behind `ProviderReference`.
@@ -459,8 +471,8 @@ concepts; its human-facing preference types remain useful.
 
 ## Active step
 
-**Return to resolution and size rules before any automatic queueing. Manual SAB
-submission and durable episode-level reconciliation are now verified.**
+**Stabilize the atomic media model, then prove it with read-only movie discovery
+before changing the primary UI or adding movie downloads.**
 
 ## Open questions
 
@@ -535,6 +547,7 @@ submission and durable episode-level reconciliation are now verified.**
 | 2026-08-07 | Closed a same-title television identity collision | TVmaze `567` (Gossip Girl, 2007) searches Newznab by its canonical TheTVDB ID `80547`; explicit conflicting result IDs are rejected, unlabeled identifier-scoped results remain usable, and SAB submission re-verifies the exact series and episodes | Thirty-seven tests; corrected an initial multi-ID query that returned zero results; cleared 80 transient cache entries |
 | 2026-08-10 | Moved SABnzbd reconciliation into a lifecycle-managed Swift worker | Active downloads progress without the Downloads screen being open; the worker runs immediately, repeats once per minute, isolates per-job failures, and cancels before SQLite closes | Forty-seven tests, including worker start/stop and partial-failure coverage |
 | 2026-08-10 | Separated show tracking from episode monitoring | New shows default to future episodes; All/Future/None supplies the baseline for newly discovered episodes and checkboxes persist explicit overrides without changing the policy | Fifty tests, including cutoff, override, persistence, and legacy-payload coverage; embedded JavaScript syntax check |
+| 2026-08-10 | Reduced television acquisition to atomic media targets | Tracked roots share one kind-keyed store; downloads reference leaf targets and ancestors; movies prove the same shape without a parallel persistence pipeline | Full test suite, embedded JavaScript syntax check, and isolated migration of the live database snapshot |
 
 ## Reference
 
