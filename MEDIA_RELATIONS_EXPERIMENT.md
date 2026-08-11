@@ -70,6 +70,33 @@ Product URLs use Callup's media vocabulary and a stable local locator:
 Provider names such as `tvmaze` never appear in canonical product URLs.
 External identifiers remain replaceable integration details.
 
+## Universal search and views
+
+Callup has one product search, not one search box per media kind or provider.
+Metadata adapters return normalized media summaries; the search service merges
+and ranks them across television, movies, books, and music. Ambiguous results
+remain visible with clear kind and date labels instead of being hidden behind a
+fragile classifier.
+
+Provider caches are not the UI read model. Callup maintains a small local,
+queryable projection containing the common facts needed for search and views,
+such as media identity, kind, title, aliases, relevant dates, status, and image
+reference. Provider-specific detail may remain in typed or disposable payloads.
+An SQLite full-text index can cover titles and aliases if ordinary indexed
+queries stop being sufficient.
+
+Views are fast SQLite queries over that projection and the explicit relations;
+they are not separate applications or provider calls. The same result list can
+therefore express:
+
+- everything, television, movies, books, or music;
+- upcoming television episodes and movies in one date-ordered view;
+- past, calendar, tracked, wanted, active, and completed slices;
+- later user-defined filters without duplicating media records.
+
+Changing a view updates only local query state and the canonical URL. It must
+never wait on a metadata provider, indexer, or download client.
+
 ## Candidate persistent pieces
 
 The smallest schema worth testing is:
@@ -104,3 +131,29 @@ Reject or reduce it if it:
 Model one existing tracked show, one episode, and one movie using the proposed
 pieces. Compare the resulting types, schema, queries, and mutation paths with
 the current `media-model` implementation before changing the application.
+
+## Smallest movie slice
+
+Finding a movie and acquiring it are separate proofs.
+
+To make the existing search find movies, Callup needs only:
+
+1. one movie metadata adapter and cache;
+2. one shared media-summary search response containing both shows and movies;
+3. one result renderer that labels kind and date and routes to the correct
+   canonical media URL.
+
+The indexer and download client are intentionally absent from that first step.
+They search releases and execute acquisitions only after the user selects a
+canonical media item.
+
+To manually acquire one selected movie, add:
+
+1. an identifier-scoped Newznab movie search;
+2. movie-specific candidate verification and video preferences;
+3. one movie acquisition target using the shared download context;
+4. the existing SABnzbd handoff using the configured movie destination;
+5. the existing shared download reconciliation and history.
+
+Do not add automatic monitoring, collections, upgrades, importing, or library
+management to this proof.
