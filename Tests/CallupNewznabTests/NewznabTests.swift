@@ -75,7 +75,7 @@ import Testing
     #expect(episode.coverage == [
         CandidateCoverage(scope: .televisionEpisode, seasonNumber: 1, episodeNumbers: [1])
     ])
-    #expect(episode.reportedSeriesIDs == [
+    #expect(episode.reportedMediaIDs == [
         ProviderReference(provider: "tvmaze", value: "123"),
         ProviderReference(provider: "thetvdb", value: "456"),
         ProviderReference(provider: "imdb", value: "tt789"),

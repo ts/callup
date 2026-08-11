@@ -13,6 +13,12 @@ public actor ApplicationStore {
         let key: String
     }
 
+    private struct StoredTrackedMedia<Metadata: Codable & Sendable, Settings: Codable & Sendable> {
+        let metadata: Metadata
+        let settings: Settings
+        let addedAt: Date
+    }
+
     public struct CacheEntry<Value: Codable & Sendable>: Sendable {
         public let value: Value
         public let fetchedAt: Date
@@ -32,6 +38,7 @@ public actor ApplicationStore {
         case invalidCacheIdentity
         case malformedCacheEntry
         case seriesNotTracked
+        case mediaNotTracked
     }
 
     private let connection: SQLiteConnection
@@ -186,32 +193,13 @@ public actor ApplicationStore {
     }
 
     public func trackedTelevisionSeries() async throws -> [TrackedTelevisionSeries] {
-        let rows = try await connection.query(
-            """
-            SELECT payload, added_at, season_folders, preferred_resolution, preferred_video_codec
-            FROM tracked_television_series
-            ORDER BY title COLLATE NOCASE, provider, external_id
-            """
-        )
-        return try rows.map { row in
-            guard
-                let payload = row.column("payload").flatMap(Data.init(sqliteData:)),
-                let addedAt = row.column("added_at").flatMap(Date.init(sqliteData:))
-            else {
-                throw StoreError.malformedCacheEntry
-            }
-            return TrackedTelevisionSeries(
-                series: try decoder.decode(TelevisionSeries.self, from: payload),
-                addedAt: addedAt,
-                downloadSettings: TelevisionDownloadSettings(
-                    seasonFolders: row.column("season_folders").flatMap(Int.init(sqliteData:)) != 0,
-                    preferredResolution: row.column("preferred_resolution")
-                        .flatMap(String.init(sqliteData:))
-                        .flatMap(TelevisionResolutionPreference.init(rawValue:)) ?? .p1080,
-                    preferredVideoCodec: row.column("preferred_video_codec")
-                        .flatMap(String.init(sqliteData:))
-                        .flatMap(TelevisionVideoCodecPreference.init(rawValue:)) ?? .hevc
-                )
+        let stored: [StoredTrackedMedia<TelevisionSeries, TelevisionDownloadSettings>] =
+            try await trackedMedia(kind: .televisionSeries)
+        return stored.map {
+            TrackedTelevisionSeries(
+                series: $0.metadata,
+                addedAt: $0.addedAt,
+                downloadSettings: $0.settings
             )
         }
     }
@@ -221,81 +209,30 @@ public actor ApplicationStore {
         _ series: TelevisionSeries,
         addedAt: Date = Date()
     ) async throws -> TrackedTelevisionSeries {
-        try validate(namespace: series.id.provider, key: series.id.value)
-        let payload = try encoder.encode(series)
-        _ = try await connection.query(
-            """
-            INSERT INTO tracked_television_series (
-                provider, external_id, title, payload, added_at
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(provider, external_id) DO UPDATE SET
-                title = excluded.title,
-                payload = excluded.payload
-            """,
-            [
-                .text(series.id.provider),
-                .text(series.id.value),
-                .text(series.title),
-                payload.sqliteData!,
-                addedAt.sqliteData!,
-            ]
-        )
-        let rows = try await connection.query(
-            """
-            SELECT added_at, season_folders, preferred_resolution, preferred_video_codec
-            FROM tracked_television_series
-            WHERE provider = ? AND external_id = ?
-            """,
-            [.text(series.id.provider), .text(series.id.value)]
-        )
-        guard let storedAddedAt = rows.first?.column("added_at").flatMap(Date.init(sqliteData:)) else {
-            throw StoreError.malformedCacheEntry
-        }
-        let row = rows.first!
-        return TrackedTelevisionSeries(
-            series: series,
-            addedAt: storedAddedAt,
-            downloadSettings: TelevisionDownloadSettings(
-                seasonFolders: row.column("season_folders").flatMap(Int.init(sqliteData:)) != 0,
-                preferredResolution: row.column("preferred_resolution")
-                    .flatMap(String.init(sqliteData:))
-                    .flatMap(TelevisionResolutionPreference.init(rawValue:)) ?? .p1080,
-                preferredVideoCodec: row.column("preferred_video_codec")
-                    .flatMap(String.init(sqliteData:))
-                    .flatMap(TelevisionVideoCodecPreference.init(rawValue:)) ?? .hevc
+        let stored: StoredTrackedMedia<TelevisionSeries, TelevisionDownloadSettings> =
+            try await trackMedia(
+                kind: .televisionSeries,
+                id: series.id,
+                title: series.title,
+                metadata: series,
+                defaultSettings: TelevisionDownloadSettings(),
+                addedAt: addedAt
             )
+        return TrackedTelevisionSeries(
+            series: stored.metadata,
+            addedAt: stored.addedAt,
+            downloadSettings: stored.settings
         )
     }
 
     public func trackedTelevisionSeries(id: ProviderReference) async throws -> TrackedTelevisionSeries? {
-        try validate(namespace: id.provider, key: id.value)
-        let rows = try await connection.query(
-            """
-            SELECT payload, added_at, season_folders, preferred_resolution, preferred_video_codec
-            FROM tracked_television_series
-            WHERE provider = ? AND external_id = ?
-            """,
-            [.text(id.provider), .text(id.value)]
-        )
-        guard let row = rows.first else { return nil }
-        guard
-            let payload = row.column("payload").flatMap(Data.init(sqliteData:)),
-            let addedAt = row.column("added_at").flatMap(Date.init(sqliteData:))
-        else {
-            throw StoreError.malformedCacheEntry
-        }
+        let stored: StoredTrackedMedia<TelevisionSeries, TelevisionDownloadSettings>? =
+            try await trackedMedia(kind: .televisionSeries, id: id)
+        guard let stored else { return nil }
         return TrackedTelevisionSeries(
-            series: try decoder.decode(TelevisionSeries.self, from: payload),
-            addedAt: addedAt,
-            downloadSettings: TelevisionDownloadSettings(
-                seasonFolders: row.column("season_folders").flatMap(Int.init(sqliteData:)) != 0,
-                preferredResolution: row.column("preferred_resolution")
-                    .flatMap(String.init(sqliteData:))
-                    .flatMap(TelevisionResolutionPreference.init(rawValue:)) ?? .p1080,
-                preferredVideoCodec: row.column("preferred_video_codec")
-                    .flatMap(String.init(sqliteData:))
-                    .flatMap(TelevisionVideoCodecPreference.init(rawValue:)) ?? .hevc
-            )
+            series: stored.metadata,
+            addedAt: stored.addedAt,
+            downloadSettings: stored.settings
         )
     }
 
@@ -304,30 +241,78 @@ public actor ApplicationStore {
         seriesID: ProviderReference,
         settings: TelevisionDownloadSettings
     ) async throws -> TelevisionDownloadSettings {
-        try await ensureTracked(seriesID)
-        _ = try await connection.query(
-            """
-            UPDATE tracked_television_series
-            SET season_folders = ?, preferred_resolution = ?, preferred_video_codec = ?
-            WHERE provider = ? AND external_id = ?
-            """,
-            [
-                (settings.seasonFolders ? 1 : 0).sqliteData!,
-                .text(settings.preferredResolution.rawValue),
-                .text(settings.preferredVideoCodec.rawValue),
-                .text(seriesID.provider),
-                .text(seriesID.value),
-            ]
-        )
+        do {
+            try await setTrackedMediaSettings(
+                media: MediaReference(kind: .televisionSeries, id: seriesID),
+                settings: settings
+            )
+        } catch StoreError.mediaNotTracked {
+            throw StoreError.seriesNotTracked
+        }
         return settings
     }
 
     public func untrackTelevisionSeries(id: ProviderReference) async throws {
-        try validate(namespace: id.provider, key: id.value)
-        _ = try await connection.query(
-            "DELETE FROM tracked_television_series WHERE provider = ? AND external_id = ?",
-            [.text(id.provider), .text(id.value)]
+        try await untrackMedia(MediaReference(kind: .televisionSeries, id: id))
+    }
+
+    public func trackedMovies() async throws -> [TrackedMovie] {
+        let stored: [StoredTrackedMedia<Movie, MovieDownloadSettings>] =
+            try await trackedMedia(kind: .movie)
+        return stored.map {
+            return TrackedMovie(
+                movie: $0.metadata,
+                addedAt: $0.addedAt,
+                downloadSettings: $0.settings
+            )
+        }
+    }
+
+    public func trackedMovie(id: ProviderReference) async throws -> TrackedMovie? {
+        let stored: StoredTrackedMedia<Movie, MovieDownloadSettings>? =
+            try await trackedMedia(kind: .movie, id: id)
+        guard let stored else { return nil }
+        return TrackedMovie(
+            movie: stored.metadata,
+            addedAt: stored.addedAt,
+            downloadSettings: stored.settings
         )
+    }
+
+    @discardableResult
+    public func trackMovie(
+        _ movie: Movie,
+        addedAt: Date = Date()
+    ) async throws -> TrackedMovie {
+        let stored: StoredTrackedMedia<Movie, MovieDownloadSettings> = try await trackMedia(
+            kind: .movie,
+            id: movie.id,
+            title: movie.title,
+            metadata: movie,
+            defaultSettings: MovieDownloadSettings(),
+            addedAt: addedAt
+        )
+        return TrackedMovie(
+            movie: stored.metadata,
+            addedAt: stored.addedAt,
+            downloadSettings: stored.settings
+        )
+    }
+
+    @discardableResult
+    public func setMovieDownloadSettings(
+        movieID: ProviderReference,
+        settings: MovieDownloadSettings
+    ) async throws -> MovieDownloadSettings {
+        try await setTrackedMediaSettings(
+            media: MediaReference(kind: .movie, id: movieID),
+            settings: settings
+        )
+        return settings
+    }
+
+    public func untrackMovie(id: ProviderReference) async throws {
+        try await untrackMedia(MediaReference(kind: .movie, id: id))
     }
 
     public func televisionLineup(seriesID: ProviderReference) async throws -> TelevisionLineup {
@@ -425,8 +410,8 @@ public actor ApplicationStore {
         try validate(namespace: candidateID.provider, key: candidateID.value)
         let rows = try await connection.query(
             """
-            SELECT title, client, state, client_job_id, series_payload,
-                   episode_ids_payload, created_at, updated_at
+            SELECT title, client, state, client_job_id, acquisition_payload,
+                   created_at, updated_at
             FROM download_submissions
             WHERE candidate_provider = ? AND candidate_external_id = ?
             """,
@@ -444,14 +429,12 @@ public actor ApplicationStore {
         else {
             throw StoreError.malformedCacheEntry
         }
+        let acquisitionContext = try row.column("acquisition_payload")
+            .flatMap(Data.init(sqliteData:))
+            .map { try decoder.decode(AcquisitionContext.self, from: $0) }
         return DownloadSubmission(
             candidateID: candidateID,
-            seriesID: try row.column("series_payload")
-                .flatMap(Data.init(sqliteData:))
-                .map { try decoder.decode(ProviderReference.self, from: $0) },
-            episodeIDs: try row.column("episode_ids_payload")
-                .flatMap(Data.init(sqliteData:))
-                .map { try decoder.decode([ProviderReference].self, from: $0) } ?? [],
+            acquisitionContext: acquisitionContext,
             title: title,
             client: client,
             state: state,
@@ -570,21 +553,34 @@ public actor ApplicationStore {
         episodeIDs: [ProviderReference],
         at date: Date = Date()
     ) async throws -> DownloadSubmission {
+        try await associateDownloadSubmission(
+            candidateID: candidateID,
+            acquisitionContext: .television(seriesID: seriesID, episodeIDs: episodeIDs),
+            at: date
+        )
+    }
+
+    public func associateDownloadSubmission(
+        candidateID: ProviderReference,
+        acquisitionContext: AcquisitionContext,
+        at date: Date = Date()
+    ) async throws -> DownloadSubmission {
         try validate(namespace: candidateID.provider, key: candidateID.value)
-        try validate(namespace: seriesID.provider, key: seriesID.value)
-        for episodeID in episodeIDs {
-            try validate(namespace: episodeID.provider, key: episodeID.value)
+        for target in acquisitionContext.targets {
+            try validate(namespace: target.media.id.provider, key: target.media.id.value)
+            for ancestor in target.ancestors {
+                try validate(namespace: ancestor.id.provider, key: ancestor.id.value)
+            }
         }
-        let seriesPayload = try encoder.encode(seriesID)
-        let episodePayload = try encoder.encode(episodeIDs)
+        let acquisitionPayload = try encoder.encode(acquisitionContext)
         _ = try await connection.query(
             """
             UPDATE download_submissions
-            SET series_payload = ?, episode_ids_payload = ?, updated_at = ?
+            SET acquisition_payload = ?, updated_at = ?
             WHERE candidate_provider = ? AND candidate_external_id = ?
             """,
             [
-                seriesPayload.sqliteData!, episodePayload.sqliteData!, date.sqliteData!,
+                acquisitionPayload.sqliteData!, date.sqliteData!,
                 .text(candidateID.provider), .text(candidateID.value),
             ]
         )
@@ -753,6 +749,193 @@ public actor ApplicationStore {
                 )
             }
         }
+
+        let versionEightRows = try await connection.query(
+            "SELECT version FROM schema_migrations WHERE version = 8"
+        )
+        if versionEightRows.isEmpty {
+            try await migrate(version: 8) {
+                _ = try await connection.query(
+                    """
+                    CREATE TABLE tracked_media (
+                        media_kind TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        metadata_payload BLOB NOT NULL,
+                        settings_payload BLOB NOT NULL,
+                        added_at REAL NOT NULL,
+                        PRIMARY KEY (media_kind, provider, external_id)
+                    ) WITHOUT ROWID
+                    """
+                )
+
+                let televisionRows = try await connection.query(
+                    """
+                    SELECT provider, external_id, title, payload, added_at,
+                           season_folders, preferred_resolution, preferred_video_codec
+                    FROM tracked_television_series
+                    """
+                )
+                for row in televisionRows {
+                    guard
+                        let provider = row.column("provider").flatMap(String.init(sqliteData:)),
+                        let externalID = row.column("external_id").flatMap(String.init(sqliteData:)),
+                        let title = row.column("title").flatMap(String.init(sqliteData:)),
+                        let metadata = row.column("payload").flatMap(Data.init(sqliteData:)),
+                        let addedAt = row.column("added_at").flatMap(Date.init(sqliteData:))
+                    else {
+                        throw StoreError.malformedCacheEntry
+                    }
+                    let settings = TelevisionDownloadSettings(
+                        seasonFolders: row.column("season_folders")
+                            .flatMap(Int.init(sqliteData:)) != 0,
+                        preferredResolution: row.column("preferred_resolution")
+                            .flatMap(String.init(sqliteData:))
+                            .flatMap(VideoResolutionPreference.init(rawValue:)) ?? .p1080,
+                        preferredVideoCodec: row.column("preferred_video_codec")
+                            .flatMap(String.init(sqliteData:))
+                            .flatMap(VideoCodecPreference.init(rawValue:)) ?? .hevc
+                    )
+                    let settingsPayload = try encoder.encode(settings)
+                    _ = try await connection.query(
+                        """
+                        INSERT INTO tracked_media (
+                            media_kind, provider, external_id, title,
+                            metadata_payload, settings_payload, added_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            .text(MediaKind.televisionSeries.rawValue),
+                            .text(provider), .text(externalID), .text(title),
+                            metadata.sqliteData!, settingsPayload.sqliteData!, addedAt.sqliteData!,
+                        ]
+                    )
+                }
+
+                _ = try await connection.query(
+                    """
+                    CREATE TABLE television_lineups_next (
+                        series_media_kind TEXT NOT NULL
+                            CHECK (series_media_kind = 'televisionSeries'),
+                        series_provider TEXT NOT NULL,
+                        series_external_id TEXT NOT NULL,
+                        payload BLOB NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY (
+                            series_media_kind, series_provider, series_external_id
+                        ),
+                        FOREIGN KEY (
+                            series_media_kind, series_provider, series_external_id
+                        ) REFERENCES tracked_media(media_kind, provider, external_id)
+                            ON DELETE CASCADE
+                    ) WITHOUT ROWID
+                    """
+                )
+                _ = try await connection.query(
+                    """
+                    INSERT INTO television_lineups_next (
+                        series_media_kind, series_provider, series_external_id,
+                        payload, updated_at
+                    )
+                    SELECT 'televisionSeries', series_provider, series_external_id,
+                           payload, updated_at
+                    FROM television_lineups
+                    """
+                )
+                _ = try await connection.query("DROP TABLE television_lineups")
+                _ = try await connection.query(
+                    "ALTER TABLE television_lineups_next RENAME TO television_lineups"
+                )
+                _ = try await connection.query("DROP TABLE tracked_television_series")
+            }
+        }
+
+        let versionNineRows = try await connection.query(
+            "SELECT version FROM schema_migrations WHERE version = 9"
+        )
+        if versionNineRows.isEmpty {
+            try await migrate(version: 9) {
+                _ = try await connection.query(
+                    "ALTER TABLE download_submissions ADD COLUMN acquisition_payload BLOB"
+                )
+                let rows = try await connection.query(
+                    """
+                    SELECT candidate_provider, candidate_external_id,
+                           series_payload, episode_ids_payload
+                    FROM download_submissions
+                    WHERE series_payload IS NOT NULL
+                    """
+                )
+                for row in rows {
+                    guard
+                        let provider = row.column("candidate_provider")
+                            .flatMap(String.init(sqliteData:)),
+                        let externalID = row.column("candidate_external_id")
+                            .flatMap(String.init(sqliteData:)),
+                        let seriesData = row.column("series_payload")
+                            .flatMap(Data.init(sqliteData:))
+                    else {
+                        throw StoreError.malformedCacheEntry
+                    }
+                    let seriesID = try decoder.decode(ProviderReference.self, from: seriesData)
+                    let episodeIDs = try row.column("episode_ids_payload")
+                        .flatMap(Data.init(sqliteData:))
+                        .map { try decoder.decode([ProviderReference].self, from: $0) } ?? []
+                    let context = AcquisitionContext.television(
+                        seriesID: seriesID,
+                        episodeIDs: episodeIDs
+                    )
+                    let payload = try encoder.encode(context)
+                    _ = try await connection.query(
+                        """
+                        UPDATE download_submissions SET acquisition_payload = ?
+                        WHERE candidate_provider = ? AND candidate_external_id = ?
+                        """,
+                        [payload.sqliteData!, .text(provider), .text(externalID)]
+                    )
+                }
+            }
+        }
+
+        let versionTenRows = try await connection.query(
+            "SELECT version FROM schema_migrations WHERE version = 10"
+        )
+        if versionTenRows.isEmpty {
+            try await migrate(version: 10) {
+                _ = try await connection.query(
+                    """
+                    CREATE TABLE download_submissions_next (
+                        candidate_provider TEXT NOT NULL,
+                        candidate_external_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        client TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        client_job_id TEXT,
+                        acquisition_payload BLOB,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY (candidate_provider, candidate_external_id)
+                    ) WITHOUT ROWID
+                    """
+                )
+                _ = try await connection.query(
+                    """
+                    INSERT INTO download_submissions_next (
+                        candidate_provider, candidate_external_id, title, client, state,
+                        client_job_id, acquisition_payload, created_at, updated_at
+                    )
+                    SELECT candidate_provider, candidate_external_id, title, client, state,
+                           client_job_id, acquisition_payload, created_at, updated_at
+                    FROM download_submissions
+                    """
+                )
+                _ = try await connection.query("DROP TABLE download_submissions")
+                _ = try await connection.query(
+                    "ALTER TABLE download_submissions_next RENAME TO download_submissions"
+                )
+            }
+        }
     }
 
     private func putTelevisionLineup(
@@ -763,11 +946,12 @@ public actor ApplicationStore {
         _ = try await connection.query(
             """
             INSERT INTO television_lineups (
-                series_provider, series_external_id, payload, updated_at
-            ) VALUES (?, ?, ?, ?)
+                series_media_kind, series_provider, series_external_id, payload, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
             """,
             [
+                .text(MediaKind.televisionSeries.rawValue),
                 .text(seriesID.provider), .text(seriesID.value),
                 payload.sqliteData!, Date().sqliteData!,
             ]
@@ -775,15 +959,135 @@ public actor ApplicationStore {
     }
 
     private func ensureTracked(_ seriesID: ProviderReference) async throws {
-        try validate(namespace: seriesID.provider, key: seriesID.value)
+        do {
+            try await ensureTracked(MediaReference(kind: .televisionSeries, id: seriesID))
+        } catch StoreError.mediaNotTracked {
+            throw StoreError.seriesNotTracked
+        }
+    }
+
+    private func ensureTracked(_ media: MediaReference) async throws {
+        try validate(namespace: media.id.provider, key: media.id.value)
         let rows = try await connection.query(
             """
-            SELECT 1 FROM tracked_television_series
-            WHERE provider = ? AND external_id = ?
+            SELECT 1 FROM tracked_media
+            WHERE media_kind = ? AND provider = ? AND external_id = ?
             """,
-            [.text(seriesID.provider), .text(seriesID.value)]
+            [.text(media.kind.rawValue), .text(media.id.provider), .text(media.id.value)]
         )
-        guard !rows.isEmpty else { throw StoreError.seriesNotTracked }
+        guard !rows.isEmpty else { throw StoreError.mediaNotTracked }
+    }
+
+    private func trackedMedia<Metadata: Codable & Sendable, Settings: Codable & Sendable>(
+        kind: MediaKind
+    ) async throws -> [StoredTrackedMedia<Metadata, Settings>] {
+        let rows = try await connection.query(
+            """
+            SELECT metadata_payload, settings_payload, added_at
+            FROM tracked_media
+            WHERE media_kind = ?
+            ORDER BY title COLLATE NOCASE, provider, external_id
+            """,
+            [.text(kind.rawValue)]
+        )
+        return try rows.map { try decodeTrackedMedia(row: $0) }
+    }
+
+    private func trackedMedia<Metadata: Codable & Sendable, Settings: Codable & Sendable>(
+        kind: MediaKind,
+        id: ProviderReference
+    ) async throws -> StoredTrackedMedia<Metadata, Settings>? {
+        try validate(namespace: id.provider, key: id.value)
+        let rows = try await connection.query(
+            """
+            SELECT metadata_payload, settings_payload, added_at
+            FROM tracked_media
+            WHERE media_kind = ? AND provider = ? AND external_id = ?
+            """,
+            [.text(kind.rawValue), .text(id.provider), .text(id.value)]
+        )
+        guard let row = rows.first else { return nil }
+        return try decodeTrackedMedia(row: row)
+    }
+
+    private func trackMedia<Metadata: Codable & Sendable, Settings: Codable & Sendable>(
+        kind: MediaKind,
+        id: ProviderReference,
+        title: String,
+        metadata: Metadata,
+        defaultSettings: Settings,
+        addedAt: Date
+    ) async throws -> StoredTrackedMedia<Metadata, Settings> {
+        try validate(namespace: id.provider, key: id.value)
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw StoreError.invalidCacheIdentity
+        }
+        let metadataPayload = try encoder.encode(metadata)
+        let settingsPayload = try encoder.encode(defaultSettings)
+        _ = try await connection.query(
+            """
+            INSERT INTO tracked_media (
+                media_kind, provider, external_id, title,
+                metadata_payload, settings_payload, added_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(media_kind, provider, external_id) DO UPDATE SET
+                title = excluded.title,
+                metadata_payload = excluded.metadata_payload
+            """,
+            [
+                .text(kind.rawValue), .text(id.provider), .text(id.value), .text(title),
+                metadataPayload.sqliteData!, settingsPayload.sqliteData!, addedAt.sqliteData!,
+            ]
+        )
+        let stored: StoredTrackedMedia<Metadata, Settings>? = try await trackedMedia(
+            kind: kind,
+            id: id
+        )
+        guard let stored else { throw StoreError.malformedCacheEntry }
+        return stored
+    }
+
+    private func setTrackedMediaSettings<Settings: Codable & Sendable>(
+        media: MediaReference,
+        settings: Settings
+    ) async throws {
+        try await ensureTracked(media)
+        let payload = try encoder.encode(settings)
+        _ = try await connection.query(
+            """
+            UPDATE tracked_media SET settings_payload = ?
+            WHERE media_kind = ? AND provider = ? AND external_id = ?
+            """,
+            [
+                payload.sqliteData!, .text(media.kind.rawValue),
+                .text(media.id.provider), .text(media.id.value),
+            ]
+        )
+    }
+
+    private func untrackMedia(_ media: MediaReference) async throws {
+        try validate(namespace: media.id.provider, key: media.id.value)
+        _ = try await connection.query(
+            "DELETE FROM tracked_media WHERE media_kind = ? AND provider = ? AND external_id = ?",
+            [.text(media.kind.rawValue), .text(media.id.provider), .text(media.id.value)]
+        )
+    }
+
+    private func decodeTrackedMedia<Metadata: Codable & Sendable, Settings: Codable & Sendable>(
+        row: SQLiteRow
+    ) throws -> StoredTrackedMedia<Metadata, Settings> {
+        guard
+            let metadata = row.column("metadata_payload").flatMap(Data.init(sqliteData:)),
+            let settings = row.column("settings_payload").flatMap(Data.init(sqliteData:)),
+            let addedAt = row.column("added_at").flatMap(Date.init(sqliteData:))
+        else {
+            throw StoreError.malformedCacheEntry
+        }
+        return StoredTrackedMedia(
+            metadata: try decoder.decode(Metadata.self, from: metadata),
+            settings: try decoder.decode(Settings.self, from: settings),
+            addedAt: addedAt
+        )
     }
 
     private func migrate(version: Int, changes: () async throws -> Void) async throws {

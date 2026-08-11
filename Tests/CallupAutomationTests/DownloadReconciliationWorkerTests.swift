@@ -121,8 +121,7 @@ private actor SubmissionStoreStub: DownloadSubmissionStoring {
         let existing = submissions[index]
         let updated = DownloadSubmission(
             candidateID: existing.candidateID,
-            seriesID: existing.seriesID,
-            episodeIDs: existing.episodeIDs,
+            acquisitionContext: existing.acquisitionContext,
             title: existing.title,
             client: existing.client,
             state: state,

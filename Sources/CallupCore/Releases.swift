@@ -40,7 +40,7 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
     public let publishedAt: Date?
     public let coverage: [CandidateCoverage]
     public let reportedTraits: ReportedReleaseTraits
-    public let reportedSeriesIDs: [ProviderReference]
+    public let reportedMediaIDs: [ProviderReference]
 
     public init(
         id: ProviderReference,
@@ -49,7 +49,7 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
         publishedAt: Date?,
         coverage: [CandidateCoverage] = [],
         reportedTraits: ReportedReleaseTraits = .init(),
-        reportedSeriesIDs: [ProviderReference] = []
+        reportedMediaIDs: [ProviderReference] = []
     ) {
         self.id = id
         self.title = title
@@ -57,7 +57,7 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
         self.publishedAt = publishedAt
         self.coverage = coverage
         self.reportedTraits = reportedTraits
-        self.reportedSeriesIDs = reportedSeriesIDs
+        self.reportedMediaIDs = reportedMediaIDs
     }
 }
 
@@ -73,10 +73,15 @@ public struct ReleaseSearchPage: Codable, Equatable, Sendable {
     }
 }
 
+public protocol VideoPreferenceSettings: Sendable {
+    var preferredResolution: VideoResolutionPreference { get }
+    var preferredVideoCodec: VideoCodecPreference { get }
+}
+
 public enum ReleasePreferenceRanker {
-    public static func sorted(
+    public static func sorted<Settings: VideoPreferenceSettings>(
         _ candidates: [ReleaseCandidate],
-        settings: TelevisionDownloadSettings
+        settings: Settings
     ) -> [ReleaseCandidate] {
         candidates.enumerated().sorted { left, right in
             let leftScore = score(left.element, settings: settings)
@@ -85,9 +90,9 @@ public enum ReleasePreferenceRanker {
         }.map(\.element)
     }
 
-    private static func score(
+    private static func score<Settings: VideoPreferenceSettings>(
         _ candidate: ReleaseCandidate,
-        settings: TelevisionDownloadSettings
+        settings: Settings
     ) -> Int {
         var result = 0
         if settings.preferredResolution != .any,
@@ -115,7 +120,7 @@ public enum ReleaseIdentityFilter {
         ].compactMap { $0 }.map { ($0.provider.lowercased(), normalized($0)) })
 
         let reported = Dictionary(
-            grouping: candidate.reportedSeriesIDs,
+            grouping: candidate.reportedMediaIDs,
             by: { $0.provider.lowercased() }
         )
         let comparable = reported.filter { expected[$0.key] != nil }

@@ -120,6 +120,63 @@ import Testing
     try await store.close()
 }
 
+@Test func televisionAndMoviesShareAtomicTrackedMediaStorage() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let show = series(id: "shared-id", title: "A Show")
+    let movie = Movie(
+        id: ProviderReference(provider: "fixture", value: "shared-id"),
+        title: "A Movie",
+        releaseYear: 2026,
+        imageURL: nil,
+        imdbID: "tt123"
+    )
+
+    _ = try await store.trackTelevisionSeries(show)
+    _ = try await store.trackMovie(movie)
+    _ = try await store.setMovieDownloadSettings(
+        movieID: movie.id,
+        settings: MovieDownloadSettings(
+            preferredResolution: .p2160,
+            preferredVideoCodec: .av1
+        )
+    )
+
+    #expect(try await store.trackedTelevisionSeries().map(\.series) == [show])
+    #expect(try await store.trackedMovies().map(\.movie) == [movie])
+    #expect(try await store.trackedMovie(id: movie.id)?.downloadSettings == MovieDownloadSettings(
+        preferredResolution: .p2160,
+        preferredVideoCodec: .av1
+    ))
+
+    try await store.untrackMovie(id: movie.id)
+    #expect(try await store.trackedMovies().isEmpty)
+    #expect(try await store.trackedTelevisionSeries().map(\.series) == [show])
+    try await store.close()
+}
+
+@Test func trackedMovieSurvivesReopen() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "callup-movie-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let fileURL = directory.appending(path: "callup.sqlite")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let movie = Movie(
+        id: ProviderReference(provider: "fixture", value: "durable-movie"),
+        title: "Durable Movie",
+        releaseYear: 2026,
+        imageURL: nil
+    )
+
+    let first = try await ApplicationStore.open(fileURL: fileURL)
+    _ = try await first.trackMovie(movie, addedAt: Date(timeIntervalSince1970: 1_000))
+    try await first.close()
+
+    let second = try await ApplicationStore.open(fileURL: fileURL)
+    let tracked = try await second.trackedMovie(id: movie.id)
+    #expect(tracked?.movie == movie)
+    #expect(tracked?.addedAt == Date(timeIntervalSince1970: 1_000))
+    try await second.close()
+}
+
 @Test func trackedTelevisionSeriesSurviveReopen() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "callup-tracked-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -387,9 +444,30 @@ import Testing
         episodeIDs: episodeIDs
     )
 
-    #expect(associated.seriesID == seriesID)
-    #expect(associated.episodeIDs == episodeIDs)
-    #expect(try await store.downloadSubmission(candidateID: candidateID)?.episodeIDs == episodeIDs)
+    let context = AcquisitionContext.television(seriesID: seriesID, episodeIDs: episodeIDs)
+    #expect(associated.acquisitionContext == context)
+    #expect(try await store.downloadSubmission(candidateID: candidateID)?.acquisitionContext == context)
+    try await store.close()
+}
+
+@Test func downloadSubmissionAssociatesWithAnyAtomicMediaTarget() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let candidateID = ProviderReference(provider: "nzbgeek", value: "movie-release")
+    let movieID = ProviderReference(provider: "fixture", value: "movie")
+    _ = try await store.reserveDownloadSubmission(
+        candidateID: candidateID,
+        title: "A Movie 2026 1080p",
+        client: .sabnzbd
+    )
+
+    let context = AcquisitionContext.movie(movieID)
+    let associated = try await store.associateDownloadSubmission(
+        candidateID: candidateID,
+        acquisitionContext: context
+    )
+
+    #expect(associated.acquisitionContext == context)
+    #expect(try await store.downloadSubmission(candidateID: candidateID)?.acquisitionContext == context)
     try await store.close()
 }
 

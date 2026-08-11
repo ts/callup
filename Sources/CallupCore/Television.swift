@@ -57,7 +57,7 @@ public struct TrackedTelevisionSeries: Codable, Equatable, Sendable {
     }
 }
 
-public struct TelevisionDownloadSettings: Codable, Equatable, Sendable {
+public struct TelevisionDownloadSettings: Codable, Equatable, VideoPreferenceSettings, Sendable {
     public var seasonFolders: Bool
     public var preferredResolution: TelevisionResolutionPreference
     public var preferredVideoCodec: TelevisionVideoCodecPreference
@@ -73,7 +73,7 @@ public struct TelevisionDownloadSettings: Codable, Equatable, Sendable {
     }
 }
 
-public enum TelevisionResolutionPreference: String, Codable, CaseIterable, Sendable {
+public enum VideoResolutionPreference: String, Codable, CaseIterable, Sendable {
     case any
     case p2160 = "2160p"
     case p1080 = "1080p"
@@ -81,13 +81,16 @@ public enum TelevisionResolutionPreference: String, Codable, CaseIterable, Senda
     case p480 = "480p"
 }
 
-public enum TelevisionVideoCodecPreference: String, Codable, CaseIterable, Sendable {
+public enum VideoCodecPreference: String, Codable, CaseIterable, Sendable {
     case any
     case hevc = "HEVC"
     case avc = "AVC"
     case av1 = "AV1"
     case mpeg2 = "MPEG-2"
 }
+
+public typealias TelevisionResolutionPreference = VideoResolutionPreference
+public typealias TelevisionVideoCodecPreference = VideoCodecPreference
 
 public enum TelevisionEpisodeMonitoring: String, Codable, CaseIterable, Sendable {
     case future

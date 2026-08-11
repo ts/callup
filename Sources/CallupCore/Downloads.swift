@@ -55,8 +55,7 @@ public enum DownloadSubmissionState: String, Codable, Sendable {
 
 public struct DownloadSubmission: Codable, Equatable, Sendable {
     public let candidateID: ProviderReference
-    public let seriesID: ProviderReference?
-    public let episodeIDs: [ProviderReference]
+    public let acquisitionContext: AcquisitionContext?
     public let title: String
     public let client: DownloadClientKind
     public let state: DownloadSubmissionState
@@ -66,8 +65,7 @@ public struct DownloadSubmission: Codable, Equatable, Sendable {
 
     public init(
         candidateID: ProviderReference,
-        seriesID: ProviderReference? = nil,
-        episodeIDs: [ProviderReference] = [],
+        acquisitionContext: AcquisitionContext? = nil,
         title: String,
         client: DownloadClientKind,
         state: DownloadSubmissionState,
@@ -76,8 +74,7 @@ public struct DownloadSubmission: Codable, Equatable, Sendable {
         updatedAt: Date
     ) {
         self.candidateID = candidateID
-        self.seriesID = seriesID
-        self.episodeIDs = episodeIDs
+        self.acquisitionContext = acquisitionContext
         self.title = title
         self.client = client
         self.state = state

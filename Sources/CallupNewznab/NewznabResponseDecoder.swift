@@ -134,7 +134,7 @@ private struct ParsedItem {
                 resolution: attributes["resolution"]?.first ?? parsedTitle.traits.resolution,
                 source: attributes["source"]?.first ?? parsedTitle.traits.source
             ),
-            reportedSeriesIDs: reportedSeriesIDs
+            reportedMediaIDs: reportedMediaIDs
         )
     }
 
@@ -161,7 +161,7 @@ private struct ParsedItem {
         ]
     }
 
-    private var reportedSeriesIDs: [ProviderReference] {
+    private var reportedMediaIDs: [ProviderReference] {
         var ids: [ProviderReference] = []
         appendIdentifier(attributes["tvmazeid"]?.first, provider: "tvmaze", to: &ids)
         appendIdentifier(attributes["tvdbid"]?.first, provider: "thetvdb", to: &ids)

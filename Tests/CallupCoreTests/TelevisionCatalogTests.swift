@@ -64,7 +64,7 @@ import Testing
         title: "Gossip.Girl.S01E06.Parentsite.1080p.WEBRip",
         sizeBytes: nil,
         publishedAt: nil,
-        reportedSeriesIDs: [
+        reportedMediaIDs: [
             ProviderReference(provider: "thetvdb", value: "377114"),
             ProviderReference(provider: "imdb", value: "tt10653784"),
         ]

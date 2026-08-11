@@ -446,7 +446,10 @@ function applyEpisodeDownloadStates(items) {
   const stateRank = {blocked: 0, sending: 1, snatched: 2, downloading: 3, downloaded: 4};
   const episodeStates = new Map();
   for (const submission of items) {
-    for (const episodeID of submission.episodeIDs || []) {
+    const episodeIDs = (submission.acquisitionContext?.targets || [])
+      .filter(target => target.media.kind === 'televisionEpisode')
+      .map(target => target.media.id);
+    for (const episodeID of episodeIDs) {
       const key = providerKey(episodeID);
       const current = episodeStates.get(key);
       if (!current || (stateRank[submission.state] ?? 0) > (stateRank[current] ?? 0)) {
@@ -1277,8 +1280,18 @@ async function rememberDownloadContext(candidate, series, episodeIDs) {
   const key = providerKey(candidate.id);
   const existing = downloadSubmissions.get(key);
   if (!existing) return;
-  const known = new Set((existing.episodeIDs || []).map(providerKey));
-  if (existing.seriesID && episodeIDs.every(id => known.has(providerKey(id)))) return;
+  const targets = existing.acquisitionContext?.targets || [];
+  const known = new Set(
+    targets
+      .filter(target => target.media.kind === 'televisionEpisode')
+      .map(target => providerKey(target.media.id))
+  );
+  const hasSeries = targets.some(target =>
+    (target.ancestors || []).some(ancestor =>
+      ancestor.kind === 'televisionSeries' && providerKey(ancestor.id) === providerKey(series.id)
+    )
+  );
+  if (hasSeries && episodeIDs.every(id => known.has(providerKey(id)))) return;
   try {
     const submission = await requestJSON(
       `/api/downloads/${encodeURIComponent(candidate.id.provider)}/${encodeURIComponent(candidate.id.value)}/context`,
