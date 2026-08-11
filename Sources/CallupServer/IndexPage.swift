@@ -218,7 +218,7 @@ let indexHTML = #"""
   </section>
 
   <form id="search-form" class="search-form">
-    <input id="query" name="q" type="search" placeholder="Search for a television series" autocomplete="off" required>
+    <input id="query" name="q" type="search" placeholder="Search for a show" autocomplete="off" required>
     <button id="search-button" type="submit">Search</button>
   </form>
   <p id="status" class="status" role="status"></p>
@@ -561,7 +561,7 @@ async function loadRuntime() {
     const health = await requestJSON('/health');
     const connected = health.indexer !== 'not-configured';
     const details = [
-      'Series and episodes: TVmaze',
+      'Metadata: TVmaze',
       connected ? `Releases: ${health.indexer} connected` : 'Releases: not configured',
       health.downloader !== 'not-configured' ? `Downloads: ${health.downloader} connected` : 'Downloads: not configured',
       health.database === 'sqlite' ? 'Store: SQLite' : null
@@ -583,7 +583,7 @@ form.addEventListener('submit', async event => {
   try {
     const data = await requestJSON(`/api/tv/search?q=${encodeURIComponent(query.value)}`);
     renderResults(data.results);
-    status.textContent = data.results.length ? '' : 'No matching series found.';
+    status.textContent = data.results.length ? '' : 'No matching shows found.';
   } catch (error) {
     status.textContent = error.message;
   } finally {

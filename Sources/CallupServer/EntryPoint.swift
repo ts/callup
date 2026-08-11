@@ -242,7 +242,7 @@ enum CallupServer {
             }
             let indexer = CachedTelevisionReleaseIndexer(upstream: client, store: store)
             guard let tvmazeID = request.query[String.self, at: "tvmazeID"] else {
-                throw Abort(.badRequest, reason: "A TVmaze series identifier is required.")
+                throw Abort(.badRequest, reason: "A TVmaze show identifier is required.")
             }
 
             do {
@@ -507,9 +507,9 @@ enum CallupServer {
     private static func metadataAbort(_ error: Error) -> Abort {
         switch error {
         case TVMazeError.emptyQuery:
-            Abort(.badRequest, reason: "Enter a series name.")
+            Abort(.badRequest, reason: "Enter a show name.")
         case TVMazeError.invalidIdentifier, TVMazeError.unsupportedProvider:
-            Abort(.badRequest, reason: "The series identifier is invalid.")
+            Abort(.badRequest, reason: "The show identifier is invalid.")
         case TVMazeError.rateLimited:
             Abort(.serviceUnavailable, reason: "TVmaze is busy. Try again shortly.")
         case let TVMazeError.httpStatus(status):
@@ -705,7 +705,7 @@ enum CallupServer {
     private static func indexerAbort(_ error: Error) -> Abort {
         switch error {
         case NewznabRequestError.emptyQuery:
-            Abort(.badRequest, reason: "Enter a series name.")
+            Abort(.badRequest, reason: "Enter a show name.")
         case let NewznabClientError.httpStatus(status):
             Abort(.badGateway, reason: "NZBGeek returned HTTP \(status).")
         case let NewznabResponseError.providerError(code, _):
