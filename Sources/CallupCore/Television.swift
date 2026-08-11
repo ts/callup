@@ -212,6 +212,10 @@ public protocol TelevisionMetadataProvider: Sendable {
     func episodes(for seriesID: ProviderReference) async throws -> [TelevisionEpisode]
 }
 
+public protocol TelevisionMetadataSupplier: TelevisionMetadataProvider {
+    var metadataSupplier: MetadataSupplier { get }
+}
+
 public enum TelevisionCatalog {
     public static func seasons(from episodes: [TelevisionEpisode]) -> [TelevisionSeason] {
         Dictionary(grouping: episodes, by: \TelevisionEpisode.seasonNumber)

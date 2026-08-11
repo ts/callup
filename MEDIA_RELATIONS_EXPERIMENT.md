@@ -157,3 +157,14 @@ To manually acquire one selected movie, add:
 
 Do not add automatic monitoring, collections, upgrades, importing, or library
 management to this proof.
+
+## Metadata supplier seam
+
+The first implemented step keeps each media domain typed while making its
+metadata source replaceable. TVMaze is now one television metadata supplier;
+the television catalog searches all configured suppliers and routes detail
+requests by provider reference. Cache namespaces derive from the supplier
+identity instead of naming TVMaze directly.
+
+This does not yet define Callup-owned media identity, merge the same work across
+suppliers, or create universal search. Those remain separate experiments.

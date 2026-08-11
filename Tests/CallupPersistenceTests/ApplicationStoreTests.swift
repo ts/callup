@@ -599,7 +599,12 @@ import Testing
     try await store.close()
 }
 
-private actor MetadataStub: TelevisionMetadataProvider {
+private actor MetadataStub: TelevisionMetadataSupplier {
+    nonisolated let metadataSupplier = MetadataSupplier(
+        id: "fixture",
+        displayName: "Fixture",
+        supportedMediaKinds: [.televisionSeries, .televisionEpisode]
+    )
     private var series: [TelevisionSeries]
     private(set) var searchCount = 0
 

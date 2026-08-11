@@ -36,9 +36,13 @@ enum CallupServer {
         application.http.server.configuration.hostname = "127.0.0.1"
         application.http.server.configuration.port = configuredPort()
 
-        let metadata = CachedTelevisionMetadataProvider(
-            upstream: TVMazeClient(),
-            store: store
+        let metadata = TelevisionMetadataCatalog(
+            suppliers: [
+                CachedTelevisionMetadataProvider(
+                    upstream: TVMazeClient(),
+                    store: store
+                )
+            ]
         )
         let downloadClientProbe = DownloadClientProbe()
         let sabnzbdClient = SABnzbdClient()

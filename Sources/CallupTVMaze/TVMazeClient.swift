@@ -13,8 +13,14 @@ public enum TVMazeError: Error, Equatable, Sendable {
     case httpStatus(Int)
 }
 
-public actor TVMazeClient: TelevisionMetadataProvider {
+public actor TVMazeClient: TelevisionMetadataSupplier {
     public static let providerName = "tvmaze"
+
+    public nonisolated let metadataSupplier = MetadataSupplier(
+        id: providerName,
+        displayName: "TVmaze",
+        supportedMediaKinds: [.televisionSeries, .televisionEpisode]
+    )
 
     private let baseURL: URL
     private let session: URLSession
