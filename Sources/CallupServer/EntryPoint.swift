@@ -77,11 +77,13 @@ enum CallupServer {
         )
 
         application.get { _ in
-            Response(
-                status: .ok,
-                headers: ["content-type": "text/html; charset=utf-8"],
-                body: .init(string: indexHTML)
-            )
+            indexResponse()
+        }
+        application.get("downloads") { _ in
+            indexResponse()
+        }
+        application.get("settings") { _ in
+            indexResponse()
         }
 
         application.get("api", "tv", "search") { request async throws -> SeriesSearchResponse in
@@ -502,6 +504,14 @@ enum CallupServer {
                 revision: revision
             )
         }
+    }
+
+    private static func indexResponse() -> Response {
+        Response(
+            status: .ok,
+            headers: ["content-type": "text/html; charset=utf-8"],
+            body: .init(string: indexHTML)
+        )
     }
 
     private static func metadataAbort(_ error: Error) -> Abort {

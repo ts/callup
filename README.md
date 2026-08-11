@@ -37,6 +37,9 @@ swift run callup
 
 Open <http://localhost:8484>. The health endpoint is at `/health`.
 
+The interface has bookmarkable top-level views at `/`, `/downloads`, and
+`/settings`. Navigation between them stays inside the live page.
+
 The live app runs as a macOS LaunchAgent independently of an active Codex task.
 [`WORKFLOW.md`](WORKFLOW.md) documents the internals when troubleshooting is
 needed.

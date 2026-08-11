@@ -15,7 +15,10 @@ let indexHTML = #"""
     h3, p { margin: 0; }
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
     .topbar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .topbar-actions a { color: #b7c4d4; background: transparent; border: 1px solid #344258; border-radius: 9px; padding: 12px 14px; font-weight: 760; text-decoration: none; }
+    .topbar-actions a[aria-current="page"] { color: #edf2f7; background: #243247; }
     .brand { min-width: 0; }
+    .brand a { color: inherit; text-decoration: none; }
     .lede, .muted, .meta { color: #91a0b3; }
     .lede { font-size: 1.1rem; margin-bottom: 30px; }
     .badge { display: inline-block; color: #64d67c; border: 1px solid #276b38; border-radius: 999px; padding: 4px 10px; }
@@ -28,7 +31,8 @@ let indexHTML = #"""
     input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: #53d769; cursor: pointer; }
     button { color: #07120a; background: #53d769; border: 0; font-weight: 760; cursor: pointer; }
     button.secondary { color: #edf2f7; background: #243247; }
-    button.ghost { color: #b7c4d4; background: transparent; border: 1px solid #344258; }
+    button.ghost, a.ghost { color: #b7c4d4; background: transparent; border: 1px solid #344258; }
+    a.ghost { border-radius: 9px; padding: 12px 14px; font-weight: 760; text-decoration: none; }
     button:disabled { opacity: .55; cursor: wait; }
     .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin-top: 18px; }
     .tracked-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 36px; }
@@ -136,23 +140,25 @@ let indexHTML = #"""
   <div class="topbar">
     <div class="brand">
       <span class="badge">Tracking</span>
-      <h1>Callup</h1>
+      <h1><a href="/" data-route>Callup</a></h1>
       <p class="lede">What do you want next?</p>
     </div>
-    <div class="topbar-actions">
-      <button id="downloads-toggle" class="ghost" type="button" aria-expanded="false">Downloads</button>
-      <button id="connections-toggle" class="ghost" type="button" aria-expanded="false">Settings</button>
-    </div>
+    <nav class="topbar-actions" aria-label="Primary">
+      <a href="/" data-route>Home</a>
+      <a href="/downloads" data-route>Downloads</a>
+      <a href="/settings" data-route>Settings</a>
+    </nav>
   </div>
   <p id="runtime" class="runtime muted"></p>
+  <p id="status" class="status" role="status"></p>
 
-  <section id="connections-section" class="connections" hidden>
+  <section id="connections-section" class="connections" data-view="settings" hidden>
     <div class="connections-heading">
       <div>
         <h2>Settings</h2>
         <p class="muted">Search in one place. Send approved downloads to one client.</p>
       </div>
-      <button id="connections-close" class="ghost" type="button">Done</button>
+      <a class="ghost" href="/" data-route>Done</a>
     </div>
     <div class="connection-grid">
       <form id="indexer-form" class="connection-form">
@@ -205,54 +211,52 @@ let indexHTML = #"""
     </div>
   </section>
 
-  <section id="downloads-section" class="utility-panel" hidden>
+  <section id="downloads-section" class="utility-panel" data-view="downloads" hidden>
     <div class="utility-heading">
       <div>
         <h2>Downloads</h2>
         <p class="muted">Recent download activity and completed history.</p>
       </div>
-      <button id="downloads-close" class="ghost" type="button">Done</button>
+      <a class="ghost" href="/" data-route>Done</a>
     </div>
     <p id="downloads-empty" class="empty muted">No download activity yet.</p>
     <div id="download-results" class="download-list"></div>
   </section>
 
-  <form id="search-form" class="search-form">
-    <input id="query" name="q" type="search" placeholder="Search for a show" autocomplete="off" required>
-    <button id="search-button" type="submit">Search</button>
-  </form>
-  <p id="status" class="status" role="status"></p>
+  <div id="home-view" data-view="home" hidden>
+    <form id="search-form" class="search-form">
+      <input id="query" name="q" type="search" placeholder="Search for a show" autocomplete="off" required>
+      <button id="search-button" type="submit">Search</button>
+    </form>
 
-  <section id="tracked-section">
-    <div class="tracked-heading">
-      <h2>Tracked shows</h2>
-      <div class="view-toggle" role="group" aria-label="Tracked shows view">
-        <button type="button" data-tracked-view="cards" aria-pressed="true">Cards</button>
-        <button type="button" data-tracked-view="list" aria-pressed="false">List</button>
+    <section id="tracked-section">
+      <div class="tracked-heading">
+        <h2>Tracked shows</h2>
+        <div class="view-toggle" role="group" aria-label="Tracked shows view">
+          <button type="button" data-tracked-view="cards" aria-pressed="true">Cards</button>
+          <button type="button" data-tracked-view="list" aria-pressed="false">List</button>
+        </div>
       </div>
-    </div>
-    <p id="tracked-empty" class="empty muted">No shows added yet.</p>
-    <div id="tracked-results" class="results tracked-results"></div>
-  </section>
+      <p id="tracked-empty" class="empty muted">No shows added yet.</p>
+      <div id="tracked-results" class="results tracked-results"></div>
+    </section>
 
-  <section id="search-section" hidden>
-    <h2>Matches</h2>
-    <div id="results" class="results"></div>
-  </section>
+    <section id="search-section" hidden>
+      <h2>Matches</h2>
+      <div id="results" class="results"></div>
+    </section>
 
-  <section id="lineup-section" hidden>
-    <h2 id="selected-title">Lineup</h2>
-    <p id="lineup-description" class="muted"></p>
-    <div id="seasons"></div>
-  </section>
+    <section id="lineup-section" hidden>
+      <h2 id="selected-title">Lineup</h2>
+      <p id="lineup-description" class="muted"></p>
+      <div id="seasons"></div>
+    </section>
+  </div>
 </main>
 <script>
 const form = document.querySelector('#search-form');
-const connectionsToggle = document.querySelector('#connections-toggle');
-const connectionsClose = document.querySelector('#connections-close');
-const connectionsSection = document.querySelector('#connections-section');
-const downloadsToggle = document.querySelector('#downloads-toggle');
-const downloadsClose = document.querySelector('#downloads-close');
+const routeLinks = document.querySelectorAll('[data-route]');
+const views = document.querySelectorAll('[data-view]');
 const indexerForm = document.querySelector('#indexer-form');
 const indexerName = document.querySelector('#indexer-name');
 const indexerEndpoint = document.querySelector('#indexer-endpoint');
@@ -299,6 +303,7 @@ let activeDownloadClientKind = null;
 const downloadSubmissions = new Map();
 
 setTrackedView(loadTrackedView());
+renderRoute();
 loadRuntime();
 loadTrackedSeries();
 loadConnections();
@@ -328,37 +333,37 @@ function setTrackedView(view) {
   } catch {}
 }
 
-connectionsToggle.addEventListener('click', () => {
-  const shouldOpen = connectionsSection.hidden;
-  closeDownloads();
-  connectionsSection.hidden = !shouldOpen;
-  connectionsToggle.setAttribute('aria-expanded', String(shouldOpen));
-  if (shouldOpen) connectionsSection.scrollIntoView({behavior: 'smooth', block: 'start'});
-});
-connectionsClose.addEventListener('click', () => {
-  closeSettings();
-  window.scrollTo({top: 0, behavior: 'smooth'});
-});
-downloadsToggle.addEventListener('click', () => {
-  const shouldOpen = downloadsSection.hidden;
-  closeSettings();
-  downloadsSection.hidden = !shouldOpen;
-  downloadsToggle.setAttribute('aria-expanded', String(shouldOpen));
-  if (shouldOpen) downloadsSection.scrollIntoView({behavior: 'smooth', block: 'start'});
-});
-downloadsClose.addEventListener('click', () => {
-  closeDownloads();
-  window.scrollTo({top: 0, behavior: 'smooth'});
-});
+for (const link of routeLinks) {
+  link.addEventListener('click', event => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(link.pathname);
+  });
+}
+window.addEventListener('popstate', renderRoute);
 
-function closeSettings() {
-  connectionsSection.hidden = true;
-  connectionsToggle.setAttribute('aria-expanded', 'false');
+function navigate(path) {
+  if (window.location.pathname !== path) history.pushState({}, '', path);
+  renderRoute();
+  window.scrollTo({top: 0});
 }
 
-function closeDownloads() {
-  downloadsSection.hidden = true;
-  downloadsToggle.setAttribute('aria-expanded', 'false');
+function renderRoute() {
+  const route = window.location.pathname === '/settings'
+    ? 'settings'
+    : window.location.pathname === '/downloads' ? 'downloads' : 'home';
+  for (const view of views) view.hidden = view.dataset.view !== route;
+  for (const link of routeLinks) {
+    if (link.closest('.topbar-actions')) {
+      const selected = link.pathname === window.location.pathname;
+      if (selected) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    }
+  }
+  document.title = route === 'home'
+    ? 'Callup'
+    : `${route[0].toUpperCase()}${route.slice(1)} · Callup`;
+  status.textContent = '';
 }
 
 downloadClientKind.addEventListener('change', applyDownloadClientKind);
