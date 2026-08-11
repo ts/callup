@@ -20,10 +20,16 @@ public struct CandidateCoverage: Codable, Equatable, Sendable {
 public struct ReportedReleaseTraits: Codable, Equatable, Sendable {
     public let videoCodec: String?
     public let resolution: String?
+    public let source: String?
 
-    public init(videoCodec: String? = nil, resolution: String? = nil) {
+    public init(
+        videoCodec: String? = nil,
+        resolution: String? = nil,
+        source: String? = nil
+    ) {
         self.videoCodec = videoCodec
         self.resolution = resolution
+        self.source = source
     }
 }
 
@@ -34,6 +40,7 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
     public let publishedAt: Date?
     public let coverage: [CandidateCoverage]
     public let reportedTraits: ReportedReleaseTraits
+    public let reportedSeriesIDs: [ProviderReference]
 
     public init(
         id: ProviderReference,
@@ -41,7 +48,8 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
         sizeBytes: Int64?,
         publishedAt: Date?,
         coverage: [CandidateCoverage] = [],
-        reportedTraits: ReportedReleaseTraits = .init()
+        reportedTraits: ReportedReleaseTraits = .init(),
+        reportedSeriesIDs: [ProviderReference] = []
     ) {
         self.id = id
         self.title = title
@@ -49,6 +57,7 @@ public struct ReleaseCandidate: Codable, Equatable, Sendable {
         self.publishedAt = publishedAt
         self.coverage = coverage
         self.reportedTraits = reportedTraits
+        self.reportedSeriesIDs = reportedSeriesIDs
     }
 }
 
@@ -64,10 +73,76 @@ public struct ReleaseSearchPage: Codable, Equatable, Sendable {
     }
 }
 
+public enum ReleasePreferenceRanker {
+    public static func sorted(
+        _ candidates: [ReleaseCandidate],
+        settings: TelevisionDownloadSettings
+    ) -> [ReleaseCandidate] {
+        candidates.enumerated().sorted { left, right in
+            let leftScore = score(left.element, settings: settings)
+            let rightScore = score(right.element, settings: settings)
+            return leftScore == rightScore ? left.offset < right.offset : leftScore > rightScore
+        }.map(\.element)
+    }
+
+    private static func score(
+        _ candidate: ReleaseCandidate,
+        settings: TelevisionDownloadSettings
+    ) -> Int {
+        var result = 0
+        if settings.preferredResolution != .any,
+           candidate.reportedTraits.resolution == settings.preferredResolution.rawValue {
+            result += 1
+        }
+        if settings.preferredVideoCodec != .any,
+           candidate.reportedTraits.videoCodec == settings.preferredVideoCodec.rawValue {
+            result += 1
+        }
+        return result
+    }
+}
+
+public enum ReleaseIdentityFilter {
+    public static func matches(
+        _ candidate: ReleaseCandidate,
+        series: TelevisionSeries,
+        requireReportedIdentity: Bool
+    ) -> Bool {
+        let expected = Dictionary(uniqueKeysWithValues: [
+            series.id,
+            series.theTVDBID.map { ProviderReference(provider: "thetvdb", value: $0) },
+            series.imdbID.map { ProviderReference(provider: "imdb", value: $0) },
+        ].compactMap { $0 }.map { ($0.provider.lowercased(), normalized($0)) })
+
+        let reported = Dictionary(
+            grouping: candidate.reportedSeriesIDs,
+            by: { $0.provider.lowercased() }
+        )
+        let comparable = reported.filter { expected[$0.key] != nil }
+        guard !comparable.isEmpty else { return !requireReportedIdentity }
+
+        return comparable.allSatisfy { provider, ids in
+            guard let expectedID = expected[provider] else { return false }
+            return ids.allSatisfy { normalized($0) == expectedID }
+        }
+    }
+
+    private static func normalized(_ reference: ProviderReference) -> String {
+        let value = reference.value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if reference.provider.caseInsensitiveCompare("imdb") == .orderedSame,
+           value.hasPrefix("tt") {
+            return String(value.dropFirst(2))
+        }
+        return value
+    }
+}
+
 public protocol TelevisionReleaseIndexer: Sendable {
     func searchTelevision(
         query: String,
         tvmazeID: String?,
+        tvdbID: String?,
+        imdbID: String?,
         season: Int?,
         episode: Int?
     ) async throws -> ReleaseSearchPage

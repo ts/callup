@@ -15,7 +15,8 @@ import Testing
           "status": "Running",
           "network": null,
           "webChannel": { "name": "Example+" },
-          "image": { "medium": "https://example.test/poster.jpg" }
+          "image": { "medium": "https://example.test/poster.jpg" },
+          "externals": { "thetvdb": 456, "imdb": "tt789" }
         }
       }
     ]
@@ -30,9 +31,32 @@ import Testing
             premieredYear: 2024,
             status: "Running",
             network: "Example+",
-            imageURL: "https://example.test/poster.jpg"
+            imageURL: "https://example.test/poster.jpg",
+            theTVDBID: "456",
+            imdbID: "tt789"
         )
     ])
+}
+
+@Test func decodesOneSeriesWithCrossProviderIdentity() throws {
+    let data = Data(#"""
+    {
+      "id": 567,
+      "name": "Gossip Girl",
+      "premiered": "2007-09-19",
+      "status": "Ended",
+      "network": { "name": "The CW" },
+      "webChannel": null,
+      "image": null,
+      "externals": { "thetvdb": 80547, "imdb": "tt0397442" }
+    }
+    """#.utf8)
+
+    let series = try TVMazeDecoder.decodeSeries(data)
+
+    #expect(series.id == ProviderReference(provider: "tvmaze", value: "567"))
+    #expect(series.theTVDBID == "80547")
+    #expect(series.imdbID == "tt0397442")
 }
 
 @Test func decodesEpisodesAndPreservesSeriesIdentity() throws {

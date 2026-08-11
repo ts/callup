@@ -17,6 +17,8 @@ public struct TelevisionSeries: Codable, Equatable, Sendable {
     public let status: String?
     public let network: String?
     public let imageURL: String?
+    public let theTVDBID: String?
+    public let imdbID: String?
 
     public init(
         id: ProviderReference,
@@ -24,7 +26,9 @@ public struct TelevisionSeries: Codable, Equatable, Sendable {
         premieredYear: Int?,
         status: String?,
         network: String?,
-        imageURL: String?
+        imageURL: String?,
+        theTVDBID: String? = nil,
+        imdbID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -32,6 +36,132 @@ public struct TelevisionSeries: Codable, Equatable, Sendable {
         self.status = status
         self.network = network
         self.imageURL = imageURL
+        self.theTVDBID = theTVDBID
+        self.imdbID = imdbID
+    }
+}
+
+public struct TrackedTelevisionSeries: Codable, Equatable, Sendable {
+    public let series: TelevisionSeries
+    public let addedAt: Date
+    public let downloadSettings: TelevisionDownloadSettings
+
+    public init(
+        series: TelevisionSeries,
+        addedAt: Date,
+        downloadSettings: TelevisionDownloadSettings = TelevisionDownloadSettings()
+    ) {
+        self.series = series
+        self.addedAt = addedAt
+        self.downloadSettings = downloadSettings
+    }
+}
+
+public struct TelevisionDownloadSettings: Codable, Equatable, Sendable {
+    public var seasonFolders: Bool
+    public var preferredResolution: TelevisionResolutionPreference
+    public var preferredVideoCodec: TelevisionVideoCodecPreference
+
+    public init(
+        seasonFolders: Bool = true,
+        preferredResolution: TelevisionResolutionPreference = .p1080,
+        preferredVideoCodec: TelevisionVideoCodecPreference = .hevc
+    ) {
+        self.seasonFolders = seasonFolders
+        self.preferredResolution = preferredResolution
+        self.preferredVideoCodec = preferredVideoCodec
+    }
+}
+
+public enum TelevisionResolutionPreference: String, Codable, CaseIterable, Sendable {
+    case any
+    case p2160 = "2160p"
+    case p1080 = "1080p"
+    case p720 = "720p"
+    case p480 = "480p"
+}
+
+public enum TelevisionVideoCodecPreference: String, Codable, CaseIterable, Sendable {
+    case any
+    case hevc = "HEVC"
+    case avc = "AVC"
+    case av1 = "AV1"
+    case mpeg2 = "MPEG-2"
+}
+
+public enum TelevisionEpisodeMonitoring: String, Codable, CaseIterable, Sendable {
+    case future
+    case all
+    case none
+}
+
+public struct TelevisionLineup: Codable, Equatable, Sendable {
+    public var monitoring: TelevisionEpisodeMonitoring
+    public var futureCutoffDate: String?
+    public var excludedSeasons: Set<Int>
+    public var excludedEpisodes: Set<ProviderReference>
+    public var includedEpisodes: Set<ProviderReference>
+
+    public init(
+        monitoring: TelevisionEpisodeMonitoring = .all,
+        futureCutoffDate: String? = nil,
+        excludedSeasons: Set<Int> = [],
+        excludedEpisodes: Set<ProviderReference> = [],
+        includedEpisodes: Set<ProviderReference> = []
+    ) {
+        self.monitoring = monitoring
+        self.futureCutoffDate = futureCutoffDate
+        self.excludedSeasons = excludedSeasons
+        self.excludedEpisodes = excludedEpisodes
+        self.includedEpisodes = includedEpisodes
+    }
+
+    public func includes(_ episode: TelevisionEpisode) -> Bool {
+        if includedEpisodes.contains(episode.id) { return true }
+        if excludedSeasons.contains(episode.seasonNumber)
+            || excludedEpisodes.contains(episode.id) { return false }
+
+        return switch monitoring {
+        case .all:
+            true
+        case .none:
+            false
+        case .future:
+            if let airDate = episode.airDate, let futureCutoffDate {
+                airDate >= futureCutoffDate
+            } else {
+                false
+            }
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case monitoring
+        case futureCutoffDate
+        case excludedSeasons
+        case excludedEpisodes
+        case includedEpisodes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        monitoring = try container.decodeIfPresent(
+            TelevisionEpisodeMonitoring.self,
+            forKey: .monitoring
+        ) ?? .all
+        futureCutoffDate = try container.decodeIfPresent(String.self, forKey: .futureCutoffDate)
+        excludedSeasons = try container.decodeIfPresent(
+            Set<Int>.self,
+            forKey: .excludedSeasons
+        ) ?? []
+        excludedEpisodes = try container.decodeIfPresent(
+            Set<ProviderReference>.self,
+            forKey: .excludedEpisodes
+        ) ?? []
+        includedEpisodes = try container.decodeIfPresent(
+            Set<ProviderReference>.self,
+            forKey: .includedEpisodes
+        ) ?? []
     }
 }
 
@@ -75,6 +205,7 @@ public struct TelevisionSeason: Codable, Equatable, Sendable {
 
 public protocol TelevisionMetadataProvider: Sendable {
     func searchSeries(query: String) async throws -> [TelevisionSeries]
+    func series(for seriesID: ProviderReference) async throws -> TelevisionSeries
     func episodes(for seriesID: ProviderReference) async throws -> [TelevisionEpisode]
 }
 
@@ -102,5 +233,15 @@ public enum TelevisionCatalog {
                 )
             }
             .sorted { $0.number < $1.number }
+    }
+
+    public static func nextAirDate(
+        from episodes: [TelevisionEpisode],
+        onOrAfter date: String
+    ) -> String? {
+        episodes
+            .compactMap(\.airDate)
+            .filter { $0 >= date }
+            .min()
     }
 }

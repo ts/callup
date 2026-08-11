@@ -4,6 +4,7 @@ import Foundation
 public struct CachedTelevisionMetadataProvider: TelevisionMetadataProvider {
     private enum Namespace {
         static let seriesSearch = "tvmaze.series-search"
+        static let series = "tvmaze.series"
         static let episodes = "tvmaze.episodes"
     }
 
@@ -33,7 +34,8 @@ public struct CachedTelevisionMetadataProvider: TelevisionMetadataProvider {
         return try await store.cachedValue(
             namespace: Namespace.seriesSearch,
             key: normalized,
-            timeToLive: seriesSearchTTL
+            timeToLive: seriesSearchTTL,
+            schemaVersion: 2
         ) {
             try await upstream.searchSeries(query: query)
         }
@@ -47,6 +49,18 @@ public struct CachedTelevisionMetadataProvider: TelevisionMetadataProvider {
             timeToLive: episodesTTL
         ) {
             try await upstream.episodes(for: seriesID)
+        }
+    }
+
+    public func series(for seriesID: ProviderReference) async throws -> TelevisionSeries {
+        let key = "\(seriesID.provider):\(seriesID.value)"
+        return try await store.cachedValue(
+            namespace: Namespace.series,
+            key: key,
+            timeToLive: seriesSearchTTL,
+            schemaVersion: 2
+        ) {
+            try await upstream.series(for: seriesID)
         }
     }
 }

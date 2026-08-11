@@ -12,6 +12,9 @@
       <newznab:attr name="category" value="5040"/>
       <newznab:attr name="season" value="1"/>
       <newznab:attr name="episode" value="1"/>
+      <newznab:attr name="tvmazeid" value="123"/>
+      <newznab:attr name="tvdbid" value="456"/>
+      <newznab:attr name="imdbid" value="tt789"/>
       <newznab:attr name="video" value="HEVC"/>
       <newznab:attr name="resolution" value="1920x1080"/>
     </item>

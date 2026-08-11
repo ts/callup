@@ -121,17 +121,20 @@ private struct ParsedItem {
     func candidate(provider: String) throws -> ReleaseCandidate {
         guard let title, !title.isEmpty else { throw NewznabResponseError.missingTitle }
         guard let identifier = safeIdentifier else { throw NewznabResponseError.missingIdentifier }
+        let parsedTitle = ReleaseTitleParser.parse(title)
 
         return ReleaseCandidate(
             id: ProviderReference(provider: provider, value: identifier),
             title: title,
             sizeBytes: attributes["size"]?.first.flatMap(Int64.init),
             publishedAt: publishedAt,
-            coverage: coverage,
+            coverage: reportedCoverage ?? parsedTitle.coverage,
             reportedTraits: ReportedReleaseTraits(
-                videoCodec: attributes["video"]?.first,
-                resolution: attributes["resolution"]?.first
-            )
+                videoCodec: attributes["video"]?.first ?? parsedTitle.traits.videoCodec,
+                resolution: attributes["resolution"]?.first ?? parsedTitle.traits.resolution,
+                source: attributes["source"]?.first ?? parsedTitle.traits.source
+            ),
+            reportedSeriesIDs: reportedSeriesIDs
         )
     }
 
@@ -145,10 +148,10 @@ private struct ParsedItem {
         return guid
     }
 
-    private var coverage: [CandidateCoverage] {
-        guard let season = attributes["season"]?.first.flatMap(Int.init) else { return [] }
+    private var reportedCoverage: [CandidateCoverage]? {
+        guard let season = attributes["season"]?.first.flatMap(Int.init) else { return nil }
         let episodes = attributes["episode", default: []].compactMap(Int.init)
-        guard !episodes.isEmpty else { return [] }
+        guard !episodes.isEmpty else { return nil }
         return [
             .init(
                 scope: .televisionEpisode,
@@ -156,5 +159,27 @@ private struct ParsedItem {
                 episodeNumbers: Array(Set(episodes)).sorted()
             )
         ]
+    }
+
+    private var reportedSeriesIDs: [ProviderReference] {
+        var ids: [ProviderReference] = []
+        appendIdentifier(attributes["tvmazeid"]?.first, provider: "tvmaze", to: &ids)
+        appendIdentifier(attributes["tvdbid"]?.first, provider: "thetvdb", to: &ids)
+        appendIdentifier(
+            attributes["imdbid"]?.first ?? attributes["imdb"]?.first,
+            provider: "imdb",
+            to: &ids
+        )
+        return ids
+    }
+
+    private func appendIdentifier(
+        _ value: String?,
+        provider: String,
+        to ids: inout [ProviderReference]
+    ) {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return }
+        ids.append(ProviderReference(provider: provider, value: value))
     }
 }

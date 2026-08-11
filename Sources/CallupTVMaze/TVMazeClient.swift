@@ -42,16 +42,27 @@ public actor TVMazeClient: TelevisionMetadataProvider {
         return try TVMazeDecoder.decodeSearch(try await fetch(components.url!))
     }
 
+    public func series(for seriesID: ProviderReference) async throws -> TelevisionSeries {
+        try validate(seriesID)
+        return try TVMazeDecoder.decodeSeries(
+            try await fetch(baseURL.appending(path: "shows/\(seriesID.value)"))
+        )
+    }
+
     public func episodes(for seriesID: ProviderReference) async throws -> [TelevisionEpisode] {
+        try validate(seriesID)
+
+        let url = baseURL.appending(path: "shows/\(seriesID.value)/episodes")
+        return try TVMazeDecoder.decodeEpisodes(try await fetch(url), seriesID: seriesID)
+    }
+
+    private func validate(_ seriesID: ProviderReference) throws {
         guard seriesID.provider == Self.providerName else {
             throw TVMazeError.unsupportedProvider(seriesID.provider)
         }
         guard Int(seriesID.value) != nil else {
             throw TVMazeError.invalidIdentifier(seriesID.value)
         }
-
-        let url = baseURL.appending(path: "shows/\(seriesID.value)/episodes")
-        return try TVMazeDecoder.decodeEpisodes(try await fetch(url), seriesID: seriesID)
     }
 
     private func fetch(_ url: URL) async throws -> Data {
@@ -71,20 +82,27 @@ public actor TVMazeClient: TelevisionMetadataProvider {
 
 enum TVMazeDecoder {
     static func decodeSearch(_ data: Data) throws -> [TelevisionSeries] {
-        try JSONDecoder().decode([SearchResult].self, from: data).map { result in
-            let show = result.show
-            return TelevisionSeries(
-                id: ProviderReference(
-                    provider: TVMazeClient.providerName,
-                    value: String(show.id)
-                ),
-                title: show.name,
-                premieredYear: show.premiered.flatMap { Int($0.prefix(4)) },
-                status: show.status,
-                network: show.network?.name ?? show.webChannel?.name,
-                imageURL: show.image?.medium
-            )
-        }
+        try JSONDecoder().decode([SearchResult].self, from: data).map { series(from: $0.show) }
+    }
+
+    static func decodeSeries(_ data: Data) throws -> TelevisionSeries {
+        series(from: try JSONDecoder().decode(Show.self, from: data))
+    }
+
+    private static func series(from show: Show) -> TelevisionSeries {
+        TelevisionSeries(
+            id: ProviderReference(
+                provider: TVMazeClient.providerName,
+                value: String(show.id)
+            ),
+            title: show.name,
+            premieredYear: show.premiered.flatMap { Int($0.prefix(4)) },
+            status: show.status,
+            network: show.network?.name ?? show.webChannel?.name,
+            imageURL: show.image?.medium,
+            theTVDBID: show.externals?.thetvdb.map(String.init),
+            imdbID: show.externals?.imdb
+        )
     }
 
     static func decodeEpisodes(
@@ -119,6 +137,7 @@ enum TVMazeDecoder {
         let network: Channel?
         let webChannel: Channel?
         let image: Image?
+        let externals: Externals?
     }
 
     private struct Episode: Decodable {
@@ -136,5 +155,10 @@ enum TVMazeDecoder {
 
     private struct Image: Decodable {
         let medium: String?
+    }
+
+    private struct Externals: Decodable {
+        let thetvdb: Int?
+        let imdb: String?
     }
 }

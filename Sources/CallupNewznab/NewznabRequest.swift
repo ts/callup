@@ -16,6 +16,8 @@ public struct NewznabAPIKey: Sendable, CustomStringConvertible {
 public struct NewznabTVSearch: Equatable, Sendable {
     public let query: String
     public let tvmazeID: String?
+    public let tvdbID: String?
+    public let imdbID: String?
     public let season: Int?
     public let episode: Int?
     public let categories: [Int]
@@ -25,6 +27,8 @@ public struct NewznabTVSearch: Equatable, Sendable {
     public init(
         query: String,
         tvmazeID: String? = nil,
+        tvdbID: String? = nil,
+        imdbID: String? = nil,
         season: Int? = nil,
         episode: Int? = nil,
         categories: [Int] = [],
@@ -33,6 +37,8 @@ public struct NewznabTVSearch: Equatable, Sendable {
     ) {
         self.query = query
         self.tvmazeID = tvmazeID
+        self.tvdbID = tvdbID
+        self.imdbID = imdbID
         self.season = season
         self.episode = episode
         self.categories = categories
@@ -44,12 +50,35 @@ public struct NewznabTVSearch: Equatable, Sendable {
 public enum NewznabRequestError: Error, Equatable {
     case emptyAPIKey
     case invalidEndpoint
+    case invalidIdentifier
     case emptyQuery
     case invalidLimit
     case invalidOffset
 }
 
 public enum NewznabRequestBuilder {
+    public static func downloadURL(
+        endpoint: URL,
+        apiKey: NewznabAPIKey,
+        identifier: String
+    ) throws -> URL {
+        guard !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NewznabRequestError.invalidIdentifier
+        }
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false),
+              components.scheme != nil,
+              components.host != nil else {
+            throw NewznabRequestError.invalidEndpoint
+        }
+        components.queryItems = [
+            URLQueryItem(name: "t", value: "get"),
+            URLQueryItem(name: "id", value: identifier),
+            URLQueryItem(name: "apikey", value: apiKey.value),
+        ]
+        guard let url = components.url else { throw NewznabRequestError.invalidEndpoint }
+        return url
+    }
+
     public static func tvSearchURL(
         endpoint: URL,
         apiKey: NewznabAPIKey,
@@ -82,6 +111,12 @@ public enum NewznabRequestBuilder {
 
         if let tvmazeID = search.tvmazeID {
             items.append(URLQueryItem(name: "tvmazeid", value: tvmazeID))
+        }
+        if let tvdbID = search.tvdbID {
+            items.append(URLQueryItem(name: "tvdbid", value: tvdbID))
+        }
+        if let imdbID = search.imdbID {
+            items.append(URLQueryItem(name: "imdbid", value: imdbID))
         }
         if let season = search.season {
             items.append(URLQueryItem(name: "season", value: String(season)))
