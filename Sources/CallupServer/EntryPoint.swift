@@ -3,6 +3,7 @@ import CallupAutomation
 import CallupDownloadClients
 import CallupNewznab
 import CallupPersistence
+import CallupTMDB
 import CallupTVMaze
 import Foundation
 import Vapor
@@ -44,8 +45,10 @@ enum CallupServer {
                 )
             ]
         )
+        let movieMetadata = configuredMovieMetadata(store: store)
         let downloadClientProbe = DownloadClientProbe()
         let sabnzbdClient = SABnzbdClient()
+        let library = LibraryInventory()
         let reconciliationWorker = DownloadReconciliationWorker(
             store: store,
             connections: connectionSettings,
@@ -84,6 +87,53 @@ enum CallupServer {
         }
         application.get("settings") { _ in
             indexResponse()
+        }
+
+        application.get("api", "search") { request async throws -> MediaSearchResponse in
+            guard let rawQuery = request.query[String.self, at: "q"] else {
+                throw Abort(.badRequest, reason: "Query parameter 'q' is required.")
+            }
+            let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else {
+                throw Abort(.badRequest, reason: "Enter a title.")
+            }
+
+            async let television = searchResult {
+                try await metadata.searchSeries(query: query)
+            }
+            async let movies = searchResult {
+                try await movieMetadata?.searchMovies(query: query) ?? []
+            }
+            let (televisionResult, movieResult) = await (television, movies)
+            var metadataIssues: [MetadataIssue] = []
+            let series: [TelevisionSeries]
+            let movieItems: [Movie]
+
+            switch televisionResult {
+            case let .success(results):
+                series = results
+            case let .failure(error):
+                series = []
+                metadataIssues.append(metadataIssue(source: "TVMaze", error: error))
+            }
+            switch movieResult {
+            case let .success(results):
+                movieItems = results
+            case let .failure(error):
+                movieItems = []
+                metadataIssues.append(metadataIssue(source: "TMDB", error: error))
+            }
+
+            guard metadataIssues.count < 2 else {
+                throw Abort(.badGateway, reason: "Metadata suppliers could not be reached.")
+            }
+            return MediaSearchResponse(
+                results: MediaSearchResult.interleaving(
+                    televisionSeries: series,
+                    movies: movieItems
+                ),
+                metadataIssues: metadataIssues
+            )
         }
 
         application.get("api", "tv", "search") { request async throws -> SeriesSearchResponse in
@@ -147,6 +197,199 @@ enum CallupServer {
                 id: ProviderReference(provider: provider, value: id)
             )
             return .noContent
+        }
+
+        application.get("api", "movies", "tracked") { _ async throws -> TrackedMovieListResponse in
+            let settings = configuredLibrarySettings()
+            let snapshot = await library.snapshot(for: settings)
+            let tracked = try await store.trackedMovies()
+            return TrackedMovieListResponse(results: tracked.map {
+                TrackedMovieResponse(movie: $0.movie, addedAt: $0.addedAt,
+                                     downloadSettings: $0.downloadSettings,
+                                     onDisk: snapshot.contains($0.movie))
+            })
+        }
+
+        application.post("api", "movies", "tracked") { request async throws -> TrackedMovie in
+            let input = try request.content.decode(TrackMovieRequest.self)
+            let tracked = try await store.trackMovie(input.movie)
+            if let movieMetadata {
+                Task {
+                    guard let movie = try? await movieMetadata.movie(for: input.movie.id) else {
+                        return
+                    }
+                    _ = try? await store.updateTrackedMovieMetadata(movie)
+                }
+            }
+            return tracked
+        }
+
+        application.delete("api", "movies", "tracked", ":provider", ":id") {
+            request async throws -> HTTPStatus in
+            let provider = try request.parameters.require("provider")
+            let id = try request.parameters.require("id")
+            try await store.untrackMovie(
+                id: ProviderReference(provider: provider, value: id)
+            )
+            return .noContent
+        }
+
+        application.put("api", "movies", "tracked", ":provider", ":id", "download-settings") {
+            request async throws -> MovieDownloadSettings in
+            let movieID = ProviderReference(
+                provider: try request.parameters.require("provider"),
+                value: try request.parameters.require("id")
+            )
+            let input = try request.content.decode(SetMovieDownloadSettingsRequest.self)
+            do {
+                return try await store.setMovieDownloadSettings(
+                    movieID: movieID,
+                    settings: MovieDownloadSettings(
+                        preferredResolution: input.preferredResolution,
+                        preferredVideoCodec: input.preferredVideoCodec
+                    )
+                )
+            } catch ApplicationStore.StoreError.mediaNotTracked {
+                throw Abort(.notFound, reason: "That movie is not tracked.")
+            }
+        }
+
+        application.get("api", "movies", "tracked", ":provider", ":id", "releases") {
+            request async throws -> ReleaseSearchResponse in
+            guard let movieMetadata else {
+                throw Abort(.serviceUnavailable, reason: "Movie metadata is not configured.")
+            }
+            guard let client = await configuredIndexer(using: connectionSettings) else {
+                throw Abort(.serviceUnavailable, reason: "No search indexer is connected.")
+            }
+            let movieID = ProviderReference(
+                provider: try request.parameters.require("provider"),
+                value: try request.parameters.require("id")
+            )
+            guard try await store.trackedMovie(id: movieID) != nil else {
+                throw Abort(.notFound, reason: "That movie is not tracked.")
+            }
+
+            do {
+                let movie = try await movieMetadata.movie(for: movieID)
+                let tracked = try await store.trackMovie(movie)
+                let indexer = CachedMovieReleaseIndexer(upstream: client, store: store)
+                let page = try await indexer.searchMovies(
+                    query: movie.title,
+                    imdbID: movie.imdbID
+                )
+                let candidates = page.candidates.filter {
+                    ReleaseIdentityFilter.matches(
+                        $0,
+                        movie: movie,
+                        requireReportedIdentity: false
+                    )
+                }
+                return ReleaseSearchResponse(
+                    offset: page.offset,
+                    total: candidates.count,
+                    results: ReleasePreferenceRanker.sorted(
+                        candidates,
+                        settings: tracked.downloadSettings
+                    )
+                )
+            } catch {
+                if error is TMDBError || error is MetadataCatalogError {
+                    throw movieMetadataAbort(error)
+                }
+                throw indexerAbort(error)
+            }
+        }
+
+        application.post("api", "movies", "tracked", ":provider", ":id", "downloads") {
+            request async throws -> DownloadSubmissionResponse in
+            guard let movieMetadata else {
+                throw Abort(.serviceUnavailable, reason: "Movie metadata is not configured.")
+            }
+            guard let downloadConnection = await connectionSettings.load().downloadClient,
+                  downloadConnection.kind == .sabnzbd else {
+                throw Abort(.serviceUnavailable, reason: "Connect SABnzbd before sending a release.")
+            }
+            let input = try request.content.decode(SubmitMovieDownloadRequest.self)
+            guard let indexerConnection = await configuredIndexerConnection(using: connectionSettings),
+                  input.candidateID.provider == indexerConnection.name.lowercased(),
+                  let indexer = await configuredIndexer(using: connectionSettings) else {
+                throw Abort(.badRequest, reason: "That release does not belong to the connected indexer.")
+            }
+            let movieID = ProviderReference(
+                provider: try request.parameters.require("provider"),
+                value: try request.parameters.require("id")
+            )
+            guard try await store.trackedMovie(id: movieID) != nil else {
+                throw Abort(.conflict, reason: "Add the movie before sending one of its releases.")
+            }
+
+            let verifiedCandidate: ReleaseCandidate
+            do {
+                let movie = try await movieMetadata.movie(for: movieID)
+                let page = try await CachedMovieReleaseIndexer(upstream: indexer, store: store)
+                    .searchMovies(query: movie.title, imdbID: movie.imdbID)
+                guard let candidate = page.candidates.first(where: {
+                    $0.id == input.candidateID && ReleaseIdentityFilter.matches(
+                        $0,
+                        movie: movie,
+                        requireReportedIdentity: false
+                    )
+                }) else {
+                    throw Abort(
+                        .conflict,
+                        reason: "The indexer did not verify that release for this movie. Search again."
+                    )
+                }
+                verifiedCandidate = candidate
+            } catch let abort as Abort {
+                throw abort
+            } catch {
+                if error is TMDBError || error is MetadataCatalogError {
+                    throw movieMetadataAbort(error)
+                }
+                throw indexerAbort(error)
+            }
+
+            switch try await store.reserveDownloadSubmission(
+                candidateID: input.candidateID,
+                title: verifiedCandidate.title,
+                client: .sabnzbd
+            ) {
+            case let .existing(submission):
+                return DownloadSubmissionResponse(submission: submission, alreadySubmitted: true)
+            case .reserved:
+                do {
+                    let nzb = try await indexer.download(identifier: input.candidateID.value)
+                    let result = try await sabnzbdClient.submit(
+                        nzb: nzb,
+                        title: verifiedCandidate.title,
+                        category: "movies",
+                        connection: downloadConnection
+                    )
+                    _ = try await store.finishDownloadSubmission(
+                        candidateID: input.candidateID,
+                        jobID: result.jobID
+                    )
+                    let associated = try await store.associateDownloadSubmission(
+                        candidateID: input.candidateID,
+                        acquisitionContext: .movie(movieID)
+                    )
+                    return DownloadSubmissionResponse(
+                        submission: associated,
+                        alreadySubmitted: false
+                    )
+                } catch {
+                    if case let SABnzbdClientError.requestFailed(code) = error {
+                        request.logger.warning(
+                            "SABnzbd movie submission transport failed",
+                            metadata: ["url-error-code": "\(code?.rawValue ?? 0)"]
+                        )
+                    }
+                    try? await store.failDownloadSubmission(candidateID: input.candidateID)
+                    throw submissionAbort(error)
+                }
+            }
         }
 
         application.get("api", "tv", "tracked", ":provider", ":id", "lineup") {
@@ -231,8 +474,18 @@ enum CallupServer {
             let reference = ProviderReference(provider: TVMazeClient.providerName, value: id)
 
             do {
-                let episodes = try await metadata.episodes(for: reference)
-                return SeasonListResponse(seasons: TelevisionCatalog.seasons(from: episodes))
+                async let series = metadata.series(for: reference)
+                async let episodes = metadata.episodes(for: reference)
+                let (resolvedSeries, resolvedEpisodes) = try await (series, episodes)
+                let snapshot = await library.snapshot(
+                    for: configuredLibrarySettings()
+                )
+                return SeasonListResponse(
+                    seasons: TelevisionCatalog.seasons(from: resolvedEpisodes),
+                    onDiskEpisodeIDs: Array(
+                        snapshot.episodeIDsOnDisk(for: resolvedSeries, episodes: resolvedEpisodes)
+                    )
+                )
             } catch {
                 throw metadataAbort(error)
             }
@@ -273,27 +526,7 @@ enum CallupServer {
         }
 
         application.get("api", "settings", "connections") { _ async -> ConnectionSettingsResponse in
-            let saved = await connectionSettings.load()
-            let indexer = await configuredIndexerConnection(using: connectionSettings)
-            return ConnectionSettingsResponse(
-                indexer: indexer.map {
-                    IndexerConnectionResponse(
-                        name: $0.name,
-                        endpoint: $0.endpoint.absoluteString,
-                        configured: true,
-                        source: saved.indexer == nil ? "environment" : "saved"
-                    )
-                },
-                downloadClient: saved.downloadClient.map {
-                    DownloadClientConnectionResponse(
-                        kind: $0.kind,
-                        name: $0.kind.displayName,
-                        endpoint: $0.endpoint.absoluteString,
-                        username: $0.username,
-                        configured: true
-                    )
-                }
-            )
+            await connectionResponse(using: connectionSettings)
         }
 
         application.put("api", "settings", "connections", "indexer") {
@@ -356,6 +589,14 @@ enum CallupServer {
             return .noContent
         }
 
+        application.post("api", "library", "refresh") { _ async -> HTTPStatus in
+            await library.invalidate()
+            _ = await library.snapshot(
+                for: configuredLibrarySettings(), force: true
+            )
+            return .noContent
+        }
+
         application.get("api", "downloads") { _ async throws -> DownloadSubmissionListResponse in
             DownloadSubmissionListResponse(results: try await store.downloadSubmissions())
         }
@@ -386,7 +627,7 @@ enum CallupServer {
                   episodes.allSatisfy({ $0.seasonNumber == season && $0.episodeNumber != nil }) else {
                 throw Abort(.badRequest, reason: "The release must identify valid episodes from one season.")
             }
-            guard let tracked = try await store.trackedTelevisionSeries(id: input.seriesID) else {
+            guard try await store.trackedTelevisionSeries(id: input.seriesID) != nil else {
                 throw Abort(.conflict, reason: "Add the show before sending one of its releases.")
             }
 
@@ -428,24 +669,10 @@ enum CallupServer {
             case .reserved:
                 do {
                     let nzb = try await indexer.download(identifier: input.candidateID.value)
-                    let destination = TelevisionDownloadDestination(
-                        series: tracked.series,
-                        seasonNumber: season,
-                        settings: tracked.downloadSettings
-                    )
-                    let televisionCategory = try await sabnzbdClient.category(
-                        named: "tv",
-                        connection: downloadConnection
-                    )
-                    let category = televisionCategory.appending(
-                        name: destination.categoryName,
-                        relativeDirectory: destination.relativeDirectory
-                    )
-                    try await sabnzbdClient.ensureCategory(category, connection: downloadConnection)
                     let result = try await sabnzbdClient.submit(
                         nzb: nzb,
                         title: verifiedCandidate.title,
-                        category: category.name,
+                        category: "tv",
                         connection: downloadConnection
                     )
                     _ = try await store.finishDownloadSubmission(
@@ -497,7 +724,7 @@ enum CallupServer {
             return HealthResponse(
                 status: "ok",
                 mode: "tracking",
-                metadata: "tvmaze",
+                metadata: ["TVmaze"] + (movieMetadata == nil ? [] : ["TMDB"]),
                 indexer: indexer == nil ? "not-configured" : indexer?.name.lowercased() ?? "configured",
                 downloader: downloader?.kind.rawValue ?? "not-configured",
                 database: "sqlite",
@@ -526,6 +753,22 @@ enum CallupServer {
             Abort(.badGateway, reason: "TVmaze returned HTTP \(status).")
         default:
             Abort(.badGateway, reason: "TVmaze could not be reached.")
+        }
+    }
+
+    private static func movieMetadataAbort(_ error: Error) -> Abort {
+        switch error {
+        case TMDBError.invalidIdentifier, TMDBError.unsupportedProvider,
+             MetadataCatalogError.unsupportedReference:
+            Abort(.badRequest, reason: "The movie identifier is invalid.")
+        case TMDBError.rateLimited:
+            Abort(.serviceUnavailable, reason: "TMDB is busy. Try again shortly.")
+        case TMDBError.unauthorized:
+            Abort(.badGateway, reason: "TMDB rejected its access token.")
+        case let TMDBError.httpStatus(status):
+            Abort(.badGateway, reason: "TMDB returned HTTP \(status).")
+        default:
+            Abort(.badGateway, reason: "TMDB could not be reached.")
         }
     }
 
@@ -575,6 +818,48 @@ enum CallupServer {
         )
     }
 
+    private static func configuredMovieMetadata(
+        store: ApplicationStore
+    ) -> MovieMetadataCatalog? {
+        guard let value = ProcessInfo.processInfo.environment["CALLUP_TMDB_ACCESS_TOKEN"],
+              let token = try? TMDBAccessToken(value) else {
+            return nil
+        }
+        return MovieMetadataCatalog(suppliers: [
+            CachedMovieMetadataProvider(
+                upstream: TMDBClient(token: token),
+                store: store
+            )
+        ])
+    }
+
+    private static func searchResult<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async -> Result<Value, any Error> {
+        do {
+            return .success(try await operation())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private static func metadataIssue(source: String, error: any Error) -> MetadataIssue {
+        let message: String
+        switch error {
+        case TMDBError.unauthorized:
+            message = "TMDB rejected its access token."
+        case TMDBError.rateLimited:
+            message = "TMDB is busy. Try again shortly."
+        case let TMDBError.httpStatus(status):
+            message = "TMDB returned HTTP \(status)."
+        case is DecodingError:
+            message = "\(source) returned data Callup could not read."
+        default:
+            message = "\(source) could not be reached."
+        }
+        return MetadataIssue(source: source, message: message)
+    }
+
     private static func configuredIndexerConnection(
         using settings: ConnectionSettingsStore
     ) async -> IndexerConnection? {
@@ -587,6 +872,16 @@ enum CallupServer {
             return nil
         }
         return IndexerConnection(name: "NZBGeek", endpoint: endpoint, apiKey: rawKey)
+    }
+
+    private static func configuredLibrarySettings() -> LibrarySettings {
+        let environment = ProcessInfo.processInfo.environment
+        return LibrarySettings(
+            televisionRoot: environment["CALLUP_TV_LIBRARY_PATH"]
+                ?? "/data/complete/Television",
+            movieRoot: environment["CALLUP_MOVIE_LIBRARY_PATH"]
+                ?? "/data/complete/Movies"
+        )
     }
 
     private static func configuredPort() -> Int {
@@ -730,6 +1025,16 @@ private struct SeriesSearchResponse: Content {
     let results: [TelevisionSeries]
 }
 
+private struct MediaSearchResponse: Content {
+    let results: [MediaSearchResult]
+    let metadataIssues: [MetadataIssue]
+}
+
+private struct MetadataIssue: Content {
+    let source: String
+    let message: String
+}
+
 private struct TrackedSeriesListResponse: Content {
     let results: [TrackedSeriesResponse]
 }
@@ -743,6 +1048,30 @@ private struct TrackedSeriesResponse: Content {
 
 private struct TrackSeriesRequest: Content {
     let series: TelevisionSeries
+}
+
+private struct TrackedMovieListResponse: Content {
+    let results: [TrackedMovieResponse]
+}
+
+private struct TrackedMovieResponse: Content {
+    let movie: Movie
+    let addedAt: Date
+    let downloadSettings: MovieDownloadSettings
+    let onDisk: Bool
+}
+
+private struct TrackMovieRequest: Content {
+    let movie: Movie
+}
+
+private struct SetMovieDownloadSettingsRequest: Content {
+    let preferredResolution: VideoResolutionPreference
+    let preferredVideoCodec: VideoCodecPreference
+}
+
+private struct SubmitMovieDownloadRequest: Content {
+    let candidateID: ProviderReference
 }
 
 private struct SetLineupRequest: Content {
@@ -760,6 +1089,8 @@ private struct SetTelevisionDownloadSettingsRequest: Content {
 }
 
 extension TrackedTelevisionSeries: Content {}
+extension TrackedMovie: Content {}
+extension MovieDownloadSettings: Content {}
 extension TelevisionLineup: Content {}
 extension TelevisionDownloadSettings: Content {}
 
@@ -775,6 +1106,7 @@ private func localDateString(_ date: Date = Date()) -> String {
 
 private struct SeasonListResponse: Content {
     let seasons: [TelevisionSeason]
+    let onDiskEpisodeIDs: [ProviderReference]
 }
 
 private struct ReleaseSearchResponse: Content {
@@ -841,7 +1173,7 @@ extension DownloadSubmission: Content {}
 private struct HealthResponse: Content {
     let status: String
     let mode: String
-    let metadata: String
+    let metadata: [String]
     let indexer: String
     let downloader: String
     let database: String

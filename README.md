@@ -4,11 +4,12 @@ A server-installed Swift application for finding and queuing television,
 movies, music, and books through one understandable acquisition workflow.
 
 Callup uses one shared acquisition workflow for a user's `Lineup` of wanted
-media. The current milestone searches TVmaze for series and episode metadata,
-then can display unranked season candidates from NZBGeek through its
-fixture-tested Newznab seam. The Connections screen configures NZBGeek and one
-SABnzbd or NZBGet download client. With SABnzbd connected, an explicitly
-confirmed result can be fetched server-side and uploaded to SABnzbd.
+media. One search combines cached TVMaze show metadata with cached TMDB movie
+metadata. Television continues through the existing tracked-show, episode,
+Newznab, and download workflow. Movies can be added to the same tracked view,
+and tracked movies can show read-only, preference-ranked Newznab matches. Movie
+submission is not part of this slice. The Connections screen configures
+NZBGeek and one SABnzbd or NZBGet download client.
 
 Tracked television separates following a show from wanting a particular
 episode. New shows monitor future episodes by default; **All**, **Future**, and
@@ -46,9 +47,14 @@ needed.
 
 The current API surface is intentionally small:
 
+- `GET /api/search?q=<title>`
 - `GET /api/tv/search?q=<series>`
 - `GET /api/tv/series/<tvmaze-id>/seasons`
 - `GET /api/tv/releases?q=<series>&tvmazeID=<id>&season=<number>`
+- `GET|POST /api/movies/tracked`
+- `DELETE /api/movies/tracked/<provider>/<id>`
+- `PUT /api/movies/tracked/<provider>/<id>/download-settings`
+- `GET /api/movies/tracked/<provider>/<id>/releases`
 - `GET /api/downloads`
 - `POST /api/downloads`
 
@@ -64,14 +70,25 @@ The Connections screen is the normal setup path. Connection secrets are kept in
 an owner-readable `connections.json` beside the database and are never returned
 by the settings API. `CALLUP_NZBGEEK_API_KEY` and `CALLUP_NZBGEEK_URL` remain
 available as deployment fallbacks; a saved in-app indexer takes precedence.
-`CALLUP_CONNECTIONS_PATH` can override the connection file location.
+TMDB is an automatic metadata supplier whose backend-only read token comes from
+`CALLUP_TMDB_ACCESS_TOKEN`. Local launch scripts load deployment overrides from
+the gitignored `.env` file. `CALLUP_CONNECTIONS_PATH` can override the
+connection file location.
+
+In its homelab container, Callup reads the canonical final library roots
+`/data/complete/Television` and `/data/complete/Movies` (never SABnzbd's
+working folders), caches a small in-memory inventory for one minute, and marks
+conservative title/episode matches as **On disk**. The deployment can override
+either canonical root with `CALLUP_TV_LIBRARY_PATH` or
+`CALLUP_MOVIE_LIBRARY_PATH`.
 
 ## Application store
 
 Callup uses one embedded SQLite database through SQLiteNIO, without an ORM.
 Durable product state and replaceable provider cache entries will share this
-store while retaining different semantics. The current slice caches TVmaze
-series and episode responses and normalized Newznab searches.
+store while retaining different semantics. The current slice caches TVMaze
+series and episode responses, TMDB movie searches and details, and normalized
+Newznab searches.
 
 Fresh cache entries are returned directly. Expired entries are returned
 immediately and refreshed in the background. Provider cache data is disposable,

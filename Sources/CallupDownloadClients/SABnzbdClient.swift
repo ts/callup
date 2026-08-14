@@ -22,45 +22,6 @@ public struct DownloadClientSubmissionResult: Equatable, Sendable {
     }
 }
 
-public struct SABnzbdCategory: Equatable, Sendable {
-    public let name: String
-    public let directory: String
-    public let processing: String?
-    public let script: String?
-    public let priority: String?
-
-    public init(
-        name: String,
-        directory: String,
-        processing: String? = nil,
-        script: String? = nil,
-        priority: String? = nil
-    ) {
-        self.name = name
-        self.directory = directory
-        self.processing = processing
-        self.script = script
-        self.priority = priority
-    }
-
-    public func appending(name: String, relativeDirectory: String) -> SABnzbdCategory {
-        var base = directory.trimmingCharacters(in: .whitespacesAndNewlines)
-        if base.hasSuffix("*") { base.removeLast() }
-        while base.last == "/" || base.last == "\\" { base.removeLast() }
-        let separator = base.contains("\\") && !base.contains("/") ? "\\" : "/"
-        let suffix = separator == "\\"
-            ? relativeDirectory.replacingOccurrences(of: "/", with: "\\")
-            : relativeDirectory
-        return SABnzbdCategory(
-            name: name,
-            directory: base.isEmpty ? suffix : "\(base)\(separator)\(suffix)",
-            processing: processing,
-            script: script,
-            priority: priority
-        )
-    }
-}
-
 public actor SABnzbdClient {
     private let session: URLSession
 
@@ -88,32 +49,6 @@ public actor SABnzbdClient {
             throw SABnzbdClientError.httpStatus(http.statusCode)
         }
         return try Self.decodeSubmissionResponse(data)
-    }
-
-    public func ensureCategory(
-        _ category: SABnzbdCategory,
-        connection: DownloadClientConnection
-    ) async throws {
-        let request = try Self.categoryRequest(category, connection: connection)
-        let data = try await performStatusRequest(request)
-        guard Self.decodeCategoryResponse(data) else {
-            throw SABnzbdClientError.rejected
-        }
-    }
-
-    public func category(
-        named name: String,
-        connection: DownloadClientConnection
-    ) async throws -> SABnzbdCategory {
-        let request = try Self.categoryConfigurationRequest(
-            named: name,
-            connection: connection
-        )
-        let data = try await performStatusRequest(request)
-        guard let category = Self.decodeCategoryConfiguration(data, name: name) else {
-            throw SABnzbdClientError.rejected
-        }
-        return category
     }
 
     public func status(
@@ -224,112 +159,6 @@ public actor SABnzbdClient {
         return request
     }
 
-    public static func categoryRequest(
-        _ category: SABnzbdCategory,
-        connection: DownloadClientConnection
-    ) throws -> URLRequest {
-        guard connection.kind == .sabnzbd, !connection.secret.isEmpty else {
-            throw SABnzbdClientError.wrongClient
-        }
-        guard !category.name.isEmpty, !category.directory.isEmpty else {
-            throw SABnzbdClientError.invalidEndpoint
-        }
-        let endpoint = connection.endpoint.lastPathComponent.lowercased() == "api"
-            ? connection.endpoint
-            : connection.endpoint.appending(path: "api")
-        guard endpoint.scheme != nil, endpoint.host != nil else {
-            throw SABnzbdClientError.invalidEndpoint
-        }
-        var components = URLComponents()
-        components.queryItems = [
-            URLQueryItem(name: "mode", value: "set_config"),
-            URLQueryItem(name: "section", value: "categories"),
-            URLQueryItem(name: "name", value: category.name),
-            URLQueryItem(name: "dir", value: category.directory),
-            URLQueryItem(name: "output", value: "json"),
-            URLQueryItem(name: "apikey", value: connection.secret),
-        ]
-        if let processing = category.processing {
-            components.queryItems?.append(URLQueryItem(name: "pp", value: processing))
-        }
-        if let script = category.script {
-            components.queryItems?.append(URLQueryItem(name: "script", value: script))
-        }
-        if let priority = category.priority {
-            components.queryItems?.append(URLQueryItem(name: "priority", value: priority))
-        }
-        guard let body = components.percentEncodedQuery?.data(using: .utf8) else {
-            throw SABnzbdClientError.invalidEndpoint
-        }
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "content-type")
-        request.httpBody = body
-        return request
-    }
-
-    public static func categoryConfigurationRequest(
-        named name: String,
-        connection: DownloadClientConnection
-    ) throws -> URLRequest {
-        guard connection.kind == .sabnzbd, !connection.secret.isEmpty, !name.isEmpty else {
-            throw SABnzbdClientError.wrongClient
-        }
-        let endpoint = connection.endpoint.lastPathComponent.lowercased() == "api"
-            ? connection.endpoint
-            : connection.endpoint.appending(path: "api")
-        guard endpoint.scheme != nil, endpoint.host != nil else {
-            throw SABnzbdClientError.invalidEndpoint
-        }
-        var components = URLComponents()
-        components.queryItems = [
-            URLQueryItem(name: "mode", value: "get_config"),
-            URLQueryItem(name: "section", value: "categories"),
-            URLQueryItem(name: "keyword", value: name),
-            URLQueryItem(name: "output", value: "json"),
-            URLQueryItem(name: "apikey", value: connection.secret),
-        ]
-        guard let body = components.percentEncodedQuery?.data(using: .utf8) else {
-            throw SABnzbdClientError.invalidEndpoint
-        }
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "content-type")
-        request.httpBody = body
-        return request
-    }
-
-    public static func decodeCategoryConfiguration(
-        _ data: Data,
-        name: String
-    ) -> SABnzbdCategory? {
-        guard
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let outerConfig = object["config"] as? [String: Any]
-        else { return nil }
-        let categories = outerConfig["categories"] as? [[String: Any]]
-        let config = categories?.first(where: {
-            ($0["name"] as? String)?.caseInsensitiveCompare(name) == .orderedSame
-        }) ?? outerConfig[name] as? [String: Any] ?? outerConfig
-        guard let directory = config["dir"] as? String else { return nil }
-        return SABnzbdCategory(
-            name: (config["name"] as? String) ?? name,
-            directory: directory,
-            processing: stringValue(config["pp"]),
-            script: stringValue(config["script"]),
-            priority: stringValue(config["priority"])
-        )
-    }
-
-    public static func decodeCategoryResponse(_ data: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return false
-        }
-        // Successful set_config calls return the saved item under "config".
-        // Only error responses use the usual {"status": false, "error": ...} shape.
-        return object["config"] != nil && object["error"] == nil
-    }
-
     public static func decodeStatusResponse(
         _ data: Data,
         container: String,
@@ -362,14 +191,6 @@ public actor SABnzbdClient {
         body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
         body.append(Data(value.utf8))
         body.append(Data("\r\n".utf8))
-    }
-
-    private static func stringValue(_ value: Any?) -> String? {
-        switch value {
-        case let value as String: value
-        case let value as NSNumber: value.stringValue
-        default: nil
-        }
     }
 
     private func performStatusRequest(_ request: URLRequest) async throws -> Data {

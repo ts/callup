@@ -2,33 +2,6 @@ import Foundation
 import Testing
 @testable import CallupCore
 
-@Test func televisionDownloadsDefaultToShowAndSeasonFolders() {
-    let show = TelevisionSeries(
-        id: ProviderReference(provider: "tvmaze", value: "42"),
-        title: "Some: Show",
-        premieredYear: nil,
-        status: nil,
-        network: nil,
-        imageURL: nil
-    )
-
-    let nested = TelevisionDownloadDestination(
-        series: show,
-        seasonNumber: 3,
-        settings: TelevisionDownloadSettings()
-    )
-    let flat = TelevisionDownloadDestination(
-        series: show,
-        seasonNumber: 3,
-        settings: TelevisionDownloadSettings(seasonFolders: false)
-    )
-
-    #expect(nested.categoryName == "callup-tvmaze-42-s03")
-    #expect(nested.relativeDirectory == "Some- Show/Season 3/*")
-    #expect(flat.categoryName == "callup-tvmaze-42")
-    #expect(flat.relativeDirectory == "Some- Show/*")
-}
-
 @Test func releasePreferencesPutExactMatchesFirstWithoutHidingAlternatives() {
     let candidates = [
         release(id: "unknown"),

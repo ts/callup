@@ -132,11 +132,35 @@ public enum ReleaseIdentityFilter {
         }
     }
 
+    public static func matches(
+        _ candidate: ReleaseCandidate,
+        movie: Movie,
+        requireReportedIdentity: Bool
+    ) -> Bool {
+        let expected = Dictionary(uniqueKeysWithValues: [
+            movie.id,
+            movie.imdbID.map { ProviderReference(provider: "imdb", value: $0) },
+        ].compactMap { $0 }.map { ($0.provider.lowercased(), normalized($0)) })
+
+        let reported = Dictionary(
+            grouping: candidate.reportedMediaIDs,
+            by: { $0.provider.lowercased() }
+        )
+        let comparable = reported.filter { expected[$0.key] != nil }
+        guard !comparable.isEmpty else { return !requireReportedIdentity }
+
+        return comparable.allSatisfy { provider, ids in
+            guard let expectedID = expected[provider] else { return false }
+            return ids.allSatisfy { normalized($0) == expectedID }
+        }
+    }
+
     private static func normalized(_ reference: ProviderReference) -> String {
         let value = reference.value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if reference.provider.caseInsensitiveCompare("imdb") == .orderedSame,
-           value.hasPrefix("tt") {
-            return String(value.dropFirst(2))
+        if reference.provider.caseInsensitiveCompare("imdb") == .orderedSame {
+            let numeric = value.hasPrefix("tt") ? value.dropFirst(2) : value[...]
+            let unpadded = numeric.drop(while: { $0 == "0" })
+            return unpadded.isEmpty ? "0" : String(unpadded)
         }
         return value
     }
@@ -150,5 +174,12 @@ public protocol TelevisionReleaseIndexer: Sendable {
         imdbID: String?,
         season: Int?,
         episode: Int?
+    ) async throws -> ReleaseSearchPage
+}
+
+public protocol MovieReleaseIndexer: Sendable {
+    func searchMovies(
+        query: String,
+        imdbID: String?
     ) async throws -> ReleaseSearchPage
 }

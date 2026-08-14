@@ -56,6 +56,30 @@ import Testing
     #expect(!NewznabRequestBuilder.redactedDescription(of: url).contains("fixture-key"))
 }
 
+@Test func buildsMovieSearchWithNormalizedIMDbIdentity() throws {
+    let key = try NewznabAPIKey("fixture-key")
+    let url = try NewznabRequestBuilder.movieSearchURL(
+        endpoint: #require(URL(string: "https://api.nzbgeek.info/api")),
+        apiKey: key,
+        search: NewznabMovieSearch(
+            query: "The Apartment",
+            imdbID: "tt0053604",
+            categories: [2000]
+        )
+    )
+    let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+    let values = Dictionary(uniqueKeysWithValues: query.compactMap { item in
+        item.value.map { (item.name, $0) }
+    })
+
+    #expect(values["t"] == "movie")
+    #expect(values["q"] == nil)
+    #expect(values["imdbid"] == "0053604")
+    #expect(values["cat"] == "2000")
+    #expect(values["extended"] == "1")
+    #expect(!NewznabRequestBuilder.redactedDescription(of: url).contains("fixture-key"))
+}
+
 @Test func combinesReportedMetadataWithTraitsAndCoverageParsedFromTitles() throws {
     let fixture = try #require(
         Bundle.module.url(forResource: "tv-search", withExtension: "xml", subdirectory: "Fixtures")

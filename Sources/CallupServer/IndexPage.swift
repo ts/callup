@@ -37,6 +37,8 @@ let indexHTML = #"""
     .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin-top: 18px; }
     .tracked-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 36px; }
     .tracked-heading h2 { margin: 0; }
+    .search-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-top: 36px; }
+    .search-heading h2 { margin: 0; }
     .view-toggle { display: inline-flex; flex: 0 0 auto; padding: 3px; background: #131b26; border: 1px solid #344258; border-radius: 10px; }
     .view-toggle button { padding: 6px 10px; color: #91a0b3; background: transparent; border-radius: 7px; font-size: .85rem; }
     .view-toggle button[aria-pressed="true"] { color: #edf2f7; background: #344258; }
@@ -62,8 +64,11 @@ let indexHTML = #"""
     .series { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; padding: 14px; background: #131b26; border: 1px solid #263244; border-radius: 13px; }
     .poster { width: 72px; height: 102px; object-fit: cover; background: #202b3a; border-radius: 8px; }
     .series-copy { display: grid; gap: 7px; min-width: 0; }
+    .media-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .media-kind { flex: 0 0 auto; padding: 3px 7px; color: #b7c4d4; background: #243247; border-radius: 999px; font-size: .72rem; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }
     .airing-status { color: #64d67c; font-size: .88rem; font-weight: 720; }
     .airing-status.ended { color: #91a0b3; }
+    .airing-status.missing { color: #91a0b3; }
     .series-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .series button { padding: 8px 11px; }
     .empty { margin-top: 12px; }
@@ -116,6 +121,9 @@ let indexHTML = #"""
     .trait-source { background: #704e86; }
     .trait-coverage { background: #49596e; }
     .status { min-height: 24px; margin-top: 14px; color: #f0b95b; }
+    .metadata-credits { display: grid; gap: 8px; margin-top: 28px; padding-top: 22px; border-top: 1px solid #263244; }
+    .metadata-credits img { display: block; width: 42px; height: 42px; }
+    .metadata-credits .notice { max-width: 620px; font-size: .82rem; }
     [hidden] { display: none !important; }
     @media (max-width: 600px) {
       .search-form { flex-direction: column; }
@@ -209,6 +217,14 @@ let indexHTML = #"""
         </div>
       </form>
     </div>
+    <div class="metadata-credits">
+      <h3>Metadata sources</h3>
+      <p class="muted">TVMaze and TMDB are built in, cached locally, and used automatically.</p>
+      <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" aria-label="The Movie Database">
+        <img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_1-5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4.svg" alt="TMDB">
+      </a>
+      <p class="notice muted">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </div>
   </section>
 
   <section id="downloads-section" class="utility-panel" data-view="downloads" hidden>
@@ -225,25 +241,65 @@ let indexHTML = #"""
 
   <div id="home-view" data-view="home" hidden>
     <form id="search-form" class="search-form">
-      <input id="query" name="q" type="search" placeholder="Search for a show" autocomplete="off" required>
+      <input id="query" name="q" type="search" placeholder="Search for a show or movie" autocomplete="off" required>
       <button id="search-button" type="submit">Search</button>
     </form>
 
     <section id="tracked-section">
       <div class="tracked-heading">
-        <h2>Tracked shows</h2>
-        <div class="view-toggle" role="group" aria-label="Tracked shows view">
+        <h2>Tracked</h2>
+        <div class="view-toggle" role="group" aria-label="Tracked media view">
           <button type="button" data-tracked-view="cards" aria-pressed="true">Cards</button>
           <button type="button" data-tracked-view="list" aria-pressed="false">List</button>
         </div>
       </div>
-      <p id="tracked-empty" class="empty muted">No shows added yet.</p>
+      <p id="tracked-empty" class="empty muted">Nothing tracked yet.</p>
       <div id="tracked-results" class="results tracked-results"></div>
     </section>
 
     <section id="search-section" hidden>
-      <h2>Matches</h2>
+      <div class="search-heading">
+        <h2>Matches</h2>
+        <div class="view-toggle" role="group" aria-label="Filter search results">
+          <button type="button" data-search-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-search-filter="tv" aria-pressed="false">TV</button>
+          <button type="button" data-search-filter="movies" aria-pressed="false">Movies</button>
+        </div>
+      </div>
+      <p id="search-empty" class="empty muted" hidden></p>
       <div id="results" class="results"></div>
+    </section>
+
+    <section id="movie-release-section" hidden>
+      <h2 id="selected-movie-title">Movie matches</h2>
+      <div class="download-settings">
+        <div class="download-settings-copy">
+          <strong>Preferred match</strong>
+          <span class="field-note">Preferences reorder the complete result list.</span>
+        </div>
+        <div class="download-preferences">
+          <label class="field">Resolution
+            <select id="movie-resolution">
+              <option value="any">Any</option>
+              <option value="2160p">2160p</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+            </select>
+          </label>
+          <label class="field">Video codec
+            <select id="movie-codec">
+              <option value="any">Any</option>
+              <option value="HEVC">HEVC</option>
+              <option value="AVC">AVC</option>
+              <option value="AV1">AV1</option>
+              <option value="MPEG-2">MPEG-2</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <p id="movie-release-summary" class="release-summary"></p>
+      <div id="movie-release-results" class="candidates"></div>
     </section>
 
     <section id="lineup-section" hidden>
@@ -285,13 +341,23 @@ const downloadsSection = document.querySelector('#downloads-section');
 const downloadsEmpty = document.querySelector('#downloads-empty');
 const downloadResults = document.querySelector('#download-results');
 const searchSection = document.querySelector('#search-section');
+const searchEmpty = document.querySelector('#search-empty');
+const searchFilterButtons = document.querySelectorAll('[data-search-filter]');
 const results = document.querySelector('#results');
+const movieReleaseSection = document.querySelector('#movie-release-section');
+const selectedMovieTitle = document.querySelector('#selected-movie-title');
+const movieResolution = document.querySelector('#movie-resolution');
+const movieCodec = document.querySelector('#movie-codec');
+const movieReleaseSummary = document.querySelector('#movie-release-summary');
+const movieReleaseResults = document.querySelector('#movie-release-results');
 const lineupSection = document.querySelector('#lineup-section');
 const selectedTitle = document.querySelector('#selected-title');
 const lineupDescription = document.querySelector('#lineup-description');
 const seasons = document.querySelector('#seasons');
 const trackedSeries = new Map();
+const trackedMovies = new Map();
 let lastSearchResults = [];
+let activeSearchFilter = 'all';
 const displayedSeasons = [];
 let episodeMonitoring = 'all';
 let futureCutoffDate = null;
@@ -299,19 +365,25 @@ let excludedSeasons = new Set();
 let excludedEpisodes = new Set();
 let includedEpisodes = new Set();
 let displayedSeriesKey = null;
+let displayedMovie = null;
 let activeDownloadClientKind = null;
 const downloadSubmissions = new Map();
+let onDiskEpisodeKeys = new Set();
 
 setTrackedView(loadTrackedView());
 renderRoute();
 loadRuntime();
-loadTrackedSeries();
+loadTrackedMedia();
 loadConnections();
 loadDownloads();
 setInterval(loadDownloads, 15_000);
 
 for (const button of trackedViewButtons) {
   button.addEventListener('click', () => setTrackedView(button.dataset.trackedView));
+}
+
+for (const button of searchFilterButtons) {
+  button.addEventListener('click', () => setSearchFilter(button.dataset.searchFilter));
 }
 
 function loadTrackedView() {
@@ -331,6 +403,14 @@ function setTrackedView(view) {
   try {
     localStorage.setItem('callup.trackedView', selectedView);
   } catch {}
+}
+
+function setSearchFilter(filter) {
+  activeSearchFilter = ['tv', 'movies'].includes(filter) ? filter : 'all';
+  for (const button of searchFilterButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.searchFilter === activeSearchFilter));
+  }
+  renderResults(lastSearchResults);
 }
 
 for (const link of routeLinks) {
@@ -445,6 +525,7 @@ function renderDownloads(items) {
     applyDownloadButtonState(button, downloadSubmissions.get(button.dataset.downloadKey));
   }
   applyEpisodeDownloadStates(items);
+  renderTrackedMedia();
 }
 
 function applyEpisodeDownloadStates(items) {
@@ -486,6 +567,30 @@ function applyEpisodeDownloadStates(items) {
       && checkedCount === episodeCheckboxes.length;
     seasonCheckbox.indeterminate = checkedCount > 0 && checkedCount < episodeCheckboxes.length;
   }
+  applyEpisodeLibraryStates();
+}
+
+function applyEpisodeLibraryStates() {
+  for (const row of document.querySelectorAll('[data-download-episode-key]')) {
+    row.querySelector('.episode-library-state')?.remove();
+    if (!onDiskEpisodeKeys.has(row.dataset.downloadEpisodeKey)) continue;
+    row.classList.add('has-download');
+    const checkbox = row.querySelector('[data-episode-key]');
+    if (checkbox) checkbox.checked = false;
+    const badge = document.createElement('span');
+    badge.className = 'episode-download-state episode-library-state';
+    badge.textContent = 'On disk';
+    row.querySelector('.episode-title').append(badge);
+  }
+  for (const section of document.querySelectorAll('.season')) {
+    const seasonCheckbox = section.querySelector('[data-season-choice]');
+    if (!seasonCheckbox) continue;
+    const episodeCheckboxes = [...section.querySelectorAll('[data-episode-key]')];
+    const checkedCount = episodeCheckboxes.filter(input => input.checked).length;
+    seasonCheckbox.checked = episodeCheckboxes.length > 0
+      && checkedCount === episodeCheckboxes.length;
+    seasonCheckbox.indeterminate = checkedCount > 0 && checkedCount < episodeCheckboxes.length;
+  }
 }
 
 function downloadStateLabel(state) {
@@ -496,6 +601,21 @@ function downloadStateLabel(state) {
     downloaded: 'Downloaded',
     blocked: 'Blocked'
   })[state] || state;
+}
+
+function movieDownloadState(movie) {
+  const stateRank = {blocked: 0, sending: 1, snatched: 2, downloading: 3, downloaded: 4};
+  let strongest = null;
+  for (const submission of downloadSubmissions.values()) {
+    const matchesMovie = (submission.acquisitionContext?.targets || []).some(target =>
+      target.media.kind === 'movie' && providerKey(target.media.id) === providerKey(movie.id)
+    );
+    if (!matchesMovie) continue;
+    if (strongest === null || (stateRank[submission.state] ?? 0) > (stateRank[strongest] ?? 0)) {
+      strongest = submission.state;
+    }
+  }
+  return strongest;
 }
 
 indexerForm.addEventListener('submit', async event => {
@@ -566,7 +686,7 @@ async function loadRuntime() {
     const health = await requestJSON('/health');
     const connected = health.indexer !== 'not-configured';
     const details = [
-      'Metadata: TVmaze',
+      `Metadata: ${health.metadata.join(', ')}`,
       connected ? `Releases: ${health.indexer} connected` : 'Releases: not configured',
       health.downloader !== 'not-configured' ? `Downloads: ${health.downloader} connected` : 'Downloads: not configured',
       health.database === 'sqlite' ? 'Store: SQLite' : null
@@ -585,10 +705,15 @@ form.addEventListener('submit', async event => {
   setBusy(searchButton, true, 'Searching…');
   status.textContent = '';
   lineupSection.hidden = true;
+  movieReleaseSection.hidden = true;
+  displayedMovie = null;
   try {
-    const data = await requestJSON(`/api/tv/search?q=${encodeURIComponent(query.value)}`);
+    const data = await requestJSON(`/api/search?q=${encodeURIComponent(query.value)}`);
+    activeSearchFilter = 'all';
     renderResults(data.results);
-    status.textContent = data.results.length ? '' : 'No matching shows found.';
+    status.textContent = data.metadataIssues.length
+      ? data.metadataIssues.map(issue => issue.message).join(' ')
+      : data.results.length ? '' : 'No matching titles found.';
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -600,89 +725,172 @@ function renderResults(items) {
   lastSearchResults = items;
   results.replaceChildren();
   searchSection.hidden = items.length === 0;
-  for (const series of items) {
+  for (const button of searchFilterButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.searchFilter === activeSearchFilter));
+  }
+  const visibleItems = items.filter(item =>
+    activeSearchFilter === 'all'
+      || (activeSearchFilter === 'tv' && item.kind === 'televisionSeries')
+      || (activeSearchFilter === 'movies' && item.kind === 'movie')
+  );
+  searchEmpty.hidden = visibleItems.length !== 0;
+  searchEmpty.textContent = activeSearchFilter === 'tv'
+    ? 'No TV matches.'
+    : activeSearchFilter === 'movies' ? 'No movie matches.' : '';
+  for (const item of visibleItems) {
+    const media = item.media;
+    const isTelevision = item.kind === 'televisionSeries';
     const card = document.createElement('article');
     card.className = 'series';
 
     const image = document.createElement('img');
     image.className = 'poster';
     image.alt = '';
-    if (series.imageURL) image.src = series.imageURL;
+    if (media.imageURL) image.src = media.imageURL;
 
     const copy = document.createElement('div');
     copy.className = 'series-copy';
+    const heading = document.createElement('div');
+    heading.className = 'media-heading';
     const title = document.createElement('h3');
-    title.textContent = series.title;
+    title.textContent = media.title;
+    const kind = document.createElement('span');
+    kind.className = 'media-kind';
+    kind.textContent = isTelevision ? 'Show' : 'Movie';
+    heading.append(title, kind);
     const meta = document.createElement('p');
     meta.className = 'meta';
-    meta.textContent = [series.premieredYear, series.network, series.status].filter(Boolean).join(' · ');
-    const select = document.createElement('button');
-    select.className = 'secondary';
-    select.textContent = 'Show seasons';
-    select.addEventListener('click', () => loadSeries(series, select));
-    const track = document.createElement('button');
-    const isTracked = trackedSeries.has(seriesKey(series));
-    track.textContent = isTracked ? 'Remove' : 'Add';
-    if (isTracked) track.className = 'secondary';
-    track.addEventListener('click', () => toggleTrackedSeries(series, track));
+    meta.textContent = isTelevision
+      ? [media.premieredYear, media.network, media.status].filter(Boolean).join(' · ')
+      : [media.releaseYear].filter(Boolean).join(' · ');
+    copy.append(heading, meta);
     const actions = document.createElement('div');
     actions.className = 'series-actions';
-    actions.append(select, track);
-    copy.append(title, meta, actions);
+    const isTracked = isTelevision
+      ? trackedSeries.has(seriesKey(media))
+      : trackedMovies.has(providerKey(media.id));
+    if (isTelevision) {
+      const select = document.createElement('button');
+      select.className = 'secondary';
+      select.textContent = 'Show seasons';
+      select.addEventListener('click', () => loadSeries(media, select));
+      actions.append(select);
+    } else if (isTracked) {
+      const matches = document.createElement('button');
+      matches.className = 'secondary';
+      matches.textContent = 'Find releases';
+      matches.addEventListener('click', () => openMovieReleases(media, matches));
+      actions.append(matches);
+    }
+    const track = document.createElement('button');
+    track.textContent = isTracked ? 'Remove' : 'Add';
+    if (isTracked) track.className = 'secondary';
+    track.addEventListener('click', () => isTelevision
+      ? toggleTrackedSeries(media, track)
+      : toggleTrackedMovie(media, track)
+    );
+    actions.append(track);
+    copy.append(actions);
     card.append(image, copy);
     results.append(card);
   }
 }
 
-async function loadTrackedSeries() {
+async function loadTrackedMedia() {
   try {
-    const data = await requestJSON('/api/tv/tracked');
+    const [seriesData, movieData] = await Promise.all([
+      requestJSON('/api/tv/tracked'),
+      requestJSON('/api/movies/tracked')
+    ]);
     trackedSeries.clear();
-    for (const item of data.results) trackedSeries.set(seriesKey(item.series), item);
-    renderTrackedSeries();
+    trackedMovies.clear();
+    for (const item of seriesData.results) trackedSeries.set(seriesKey(item.series), item);
+    for (const item of movieData.results) trackedMovies.set(providerKey(item.movie.id), item);
+    renderTrackedMedia();
   } catch (error) {
     status.textContent = error.message;
   }
 }
 
-function renderTrackedSeries() {
+function renderTrackedMedia() {
   trackedResults.replaceChildren();
-  const items = [...trackedSeries.values()];
+  const items = [
+    ...[...trackedSeries.values()].map(item => ({kind: 'televisionSeries', item})),
+    ...[...trackedMovies.values()].map(item => ({kind: 'movie', item}))
+  ];
   trackedEmpty.hidden = items.length !== 0;
-  for (const item of items) {
-    const series = item.series;
+  for (const tracked of items) {
+    const isTelevision = tracked.kind === 'televisionSeries';
+    const item = tracked.item;
+    const media = isTelevision ? item.series : item.movie;
     const card = document.createElement('article');
     card.className = 'series';
     const image = document.createElement('img');
     image.className = 'poster';
     image.alt = '';
-    if (series.imageURL) image.src = series.imageURL;
+    if (media.imageURL) image.src = media.imageURL;
     const copy = document.createElement('div');
     copy.className = 'series-copy';
+    const heading = document.createElement('div');
+    heading.className = 'media-heading';
     const title = document.createElement('h3');
-    title.textContent = series.title;
+    title.textContent = media.title;
+    const kind = document.createElement('span');
+    kind.className = 'media-kind';
+    kind.textContent = isTelevision ? 'Show' : 'Movie';
+    heading.append(title, kind);
     const meta = document.createElement('p');
     meta.className = 'meta';
-    meta.textContent = [series.premieredYear, series.network].filter(Boolean).join(' · ');
-    const airingStatus = document.createElement('p');
-    airingStatus.className = 'airing-status';
-    const hasEnded = series.status?.toLowerCase() === 'ended';
-    if (hasEnded) airingStatus.classList.add('ended');
-    airingStatus.textContent = hasEnded
-      ? 'Ended'
-      : `Next airing · ${item.nextAirDate ? formatAirDate(item.nextAirDate) : 'TBA'}`;
+    meta.textContent = isTelevision
+      ? [media.premieredYear, media.network].filter(Boolean).join(' · ')
+      : [media.releaseYear].filter(Boolean).join(' · ');
+    const state = document.createElement('p');
+    state.className = 'airing-status';
+    if (isTelevision) {
+      const hasEnded = media.status?.toLowerCase() === 'ended';
+      if (hasEnded) state.classList.add('ended');
+      state.textContent = hasEnded
+        ? 'Ended'
+        : `Next airing · ${item.nextAirDate ? formatAirDate(item.nextAirDate) : 'TBA'}`;
+    } else if (item.onDisk) {
+      state.textContent = 'On disk';
+    } else {
+      const downloadState = movieDownloadState(media);
+      const upcoming = isFutureDate(media.releaseDate);
+      if (downloadState) {
+        if (downloadState === 'blocked') state.classList.add('missing');
+        state.textContent = downloadStateLabel(downloadState);
+      } else {
+        if (!upcoming) state.classList.add('missing');
+        state.textContent = upcoming
+          ? `Releases · ${formatAirDate(media.releaseDate)}`
+          : 'Missing';
+      }
+    }
     const actions = document.createElement('div');
     actions.className = 'series-actions';
-    const select = document.createElement('button');
-    select.className = 'secondary';
-    select.textContent = 'Show seasons';
-    select.addEventListener('click', () => loadSeries(series, select));
+    if (isTelevision) {
+      const select = document.createElement('button');
+      select.className = 'secondary';
+      select.textContent = 'Show seasons';
+      select.addEventListener('click', () => loadSeries(media, select));
+      actions.append(select);
+    } else {
+      const matches = document.createElement('button');
+      matches.className = 'secondary';
+      matches.textContent = 'Find releases';
+      matches.addEventListener('click', () => openMovieReleases(media, matches));
+      actions.append(matches);
+    }
     const remove = document.createElement('button');
     remove.className = 'secondary';
     remove.textContent = 'Remove';
-    remove.addEventListener('click', () => toggleTrackedSeries(series, remove));
-    actions.append(select, remove);
-    copy.append(title, meta, airingStatus, actions);
+    remove.addEventListener('click', () => isTelevision
+      ? toggleTrackedSeries(media, remove)
+      : toggleTrackedMovie(media, remove)
+    );
+    actions.append(remove);
+    copy.append(heading, meta, state, actions);
     card.append(image, copy);
     trackedResults.append(card);
   }
@@ -710,15 +918,110 @@ async function toggleTrackedSeries(series, button) {
         headers: {'content-type': 'application/json'},
         body: JSON.stringify({series})
       });
-      await loadTrackedSeries();
+      await loadTrackedMedia();
     }
-    renderTrackedSeries();
+    renderTrackedMedia();
     renderResults(lastSearchResults);
   } catch (error) {
     status.textContent = error.message;
     setBusy(button, false, isTracked ? 'Remove' : 'Add');
   }
 }
+
+async function toggleTrackedMovie(movie, button) {
+  const key = providerKey(movie.id);
+  const isTracked = trackedMovies.has(key);
+  setBusy(button, true, isTracked ? 'Removing…' : 'Adding…');
+  status.textContent = '';
+  try {
+    if (isTracked) {
+      await requestJSON(
+        `/api/movies/tracked/${encodeURIComponent(movie.id.provider)}/${encodeURIComponent(movie.id.value)}`,
+        {method: 'DELETE'}
+      );
+      trackedMovies.delete(key);
+      if (displayedMovie && providerKey(displayedMovie.id) === key) {
+        displayedMovie = null;
+        movieReleaseSection.hidden = true;
+      }
+    } else {
+      const tracked = await requestJSON('/api/movies/tracked', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({movie})
+      });
+      trackedMovies.set(key, tracked);
+    }
+    renderTrackedMedia();
+    renderResults(lastSearchResults);
+  } catch (error) {
+    status.textContent = error.message;
+    setBusy(button, false, isTracked ? 'Remove' : 'Add');
+  }
+}
+
+function trackedMovieURL(movie) {
+  return `/api/movies/tracked/${encodeURIComponent(movie.id.provider)}/${encodeURIComponent(movie.id.value)}`;
+}
+
+async function openMovieReleases(movie, button) {
+  displayedMovie = movie;
+  lineupSection.hidden = true;
+  selectedMovieTitle.textContent = `${movie.title} matches`;
+  const tracked = trackedMovies.get(providerKey(movie.id));
+  movieResolution.value = tracked?.downloadSettings?.preferredResolution || '1080p';
+  movieCodec.value = tracked?.downloadSettings?.preferredVideoCodec || 'HEVC';
+  movieReleaseSection.hidden = false;
+  setBusy(button, true, 'Searching…');
+  status.textContent = '';
+  try {
+    await loadMovieReleases(movie);
+    movieReleaseSection.scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(button, false, 'Find releases');
+  }
+}
+
+async function loadMovieReleases(movie) {
+  const data = await requestJSON(`${trackedMovieURL(movie)}/releases`);
+  movieReleaseResults.replaceChildren();
+  movieReleaseSummary.textContent = data.results.length
+    ? `${data.results.length} results, with preferred matches first.`
+    : 'No releases were reported for this movie.';
+  for (const candidate of data.results) {
+    movieReleaseResults.append(renderCandidate(candidate, null, [], movie));
+  }
+}
+
+async function saveMoviePreferences() {
+  if (!displayedMovie) return;
+  movieResolution.disabled = true;
+  movieCodec.disabled = true;
+  status.textContent = '';
+  try {
+    const settings = await requestJSON(`${trackedMovieURL(displayedMovie)}/download-settings`, {
+      method: 'PUT',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({
+        preferredResolution: movieResolution.value,
+        preferredVideoCodec: movieCodec.value
+      })
+    });
+    const tracked = trackedMovies.get(providerKey(displayedMovie.id));
+    if (tracked) tracked.downloadSettings = settings;
+    await loadMovieReleases(displayedMovie);
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    movieResolution.disabled = false;
+    movieCodec.disabled = false;
+  }
+}
+
+movieResolution.addEventListener('change', saveMoviePreferences);
+movieCodec.addEventListener('change', saveMoviePreferences);
 
 function seriesKey(series) {
     return `${series.id.provider}:${series.id.value}`;
@@ -731,9 +1034,20 @@ function formatAirDate(value) {
   );
 }
 
+function isFutureDate(value) {
+  if (!value) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(year, month - 1, day) > today;
+}
+
 async function loadSeries(series, button) {
   setBusy(button, true, 'Loading…');
   status.textContent = '';
+  movieReleaseSection.hidden = true;
+  displayedMovie = null;
   try {
     const canChoose = trackedSeries.has(seriesKey(series));
     const [data, lineup] = await Promise.all([
@@ -741,6 +1055,7 @@ async function loadSeries(series, button) {
       canChoose ? requestJSON(lineupURL(series)) : Promise.resolve({episodeIDs: []})
     ]);
     setLineup(lineup);
+    onDiskEpisodeKeys = new Set((data.onDiskEpisodeIDs || []).map(providerKey));
     renderSeasons(series, data.seasons, canChoose);
   } catch (error) {
     status.textContent = error.message;
@@ -1240,7 +1555,7 @@ function renderCompactReleaseGroup(container, matches, series) {
   }
 }
 
-function renderCandidate(candidate, series, episodeIDs) {
+function renderCandidate(candidate, series, episodeIDs, movie = null) {
   const item = document.createElement('article');
   item.className = 'candidate';
   const title = document.createElement('strong');
@@ -1266,14 +1581,16 @@ function renderCandidate(candidate, series, episodeIDs) {
     meta.append(detail);
   }
   item.append(title, meta);
-  if (activeDownloadClientKind === 'sabnzbd') {
+  if ((series || movie) && activeDownloadClientKind === 'sabnzbd') {
     const actions = document.createElement('div');
     actions.className = 'candidate-actions';
     const send = document.createElement('button');
     send.type = 'button';
     send.dataset.downloadKey = providerKey(candidate.id);
     applyDownloadButtonState(send, downloadSubmissions.get(send.dataset.downloadKey));
-    send.addEventListener('click', () => sendToSABnzbd(candidate, send, series, episodeIDs));
+    send.addEventListener('click', () => movie
+      ? sendMovieToSABnzbd(candidate, send, movie)
+      : sendToSABnzbd(candidate, send, series, episodeIDs));
     actions.append(send);
     item.append(actions);
   }
@@ -1343,6 +1660,28 @@ async function sendToSABnzbd(candidate, button, series, episodeIDs) {
     });
     downloadSubmissions.set(providerKey(candidate.id), data.submission);
     await rememberDownloadContext(candidate, series, episodeIDs);
+    applyDownloadButtonState(button, data.submission);
+    await loadDownloads();
+  } catch (error) {
+    status.textContent = error.message;
+    await loadDownloads();
+    applyDownloadButtonState(button, downloadSubmissions.get(providerKey(candidate.id)));
+  }
+}
+
+async function sendMovieToSABnzbd(candidate, button, movie) {
+  const existing = downloadSubmissions.get(providerKey(candidate.id));
+  const action = existing?.state === 'blocked' ? 'Retry' : 'Send';
+  if (!window.confirm(`${action} “${candidate.title}” to SABnzbd now?`)) return;
+  setBusy(button, true, 'Sending…');
+  status.textContent = '';
+  try {
+    const data = await requestJSON(`${trackedMovieURL(movie)}/downloads`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({candidateID: candidate.id})
+    });
+    downloadSubmissions.set(providerKey(candidate.id), data.submission);
     applyDownloadButtonState(button, data.submission);
     await loadDownloads();
   } catch (error) {

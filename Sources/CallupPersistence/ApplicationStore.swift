@@ -300,6 +300,24 @@ public actor ApplicationStore {
     }
 
     @discardableResult
+    public func updateTrackedMovieMetadata(_ movie: Movie) async throws -> TrackedMovie? {
+        try validate(namespace: movie.id.provider, key: movie.id.value)
+        let payload = try encoder.encode(movie)
+        _ = try await connection.query(
+            """
+            UPDATE tracked_media
+            SET title = ?, metadata_payload = ?
+            WHERE media_kind = ? AND provider = ? AND external_id = ?
+            """,
+            [
+                .text(movie.title), payload.sqliteData!, .text(MediaKind.movie.rawValue),
+                .text(movie.id.provider), .text(movie.id.value),
+            ]
+        )
+        return try await trackedMovie(id: movie.id)
+    }
+
+    @discardableResult
     public func setMovieDownloadSettings(
         movieID: ProviderReference,
         settings: MovieDownloadSettings

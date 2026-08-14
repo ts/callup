@@ -7,21 +7,15 @@ project_directory="$(cd "$(dirname "$0")/.." && pwd)"
 binary="$project_directory/.build/release/callup"
 revision_file="$project_directory/.build/canonical-revision"
 
+if [[ -f "$project_directory/.env" ]]; then
+    set -a
+    source "$project_directory/.env"
+    set +a
+fi
+
 if [[ ! -x "$binary" ]] || [[ ! -s "$revision_file" ]]; then
     echo "Canonical Callup has not been built. Run Scripts/build-canonical first." >&2
     exit 1
-fi
-
-if [[ -z "${CALLUP_NZBGEEK_API_KEY:-}" ]]; then
-    keychain_account="$(id -un)"
-    if CALLUP_NZBGEEK_API_KEY="$(
-        /usr/bin/security find-generic-password \
-            -a "$keychain_account" \
-            -s "callup-nzbgeek-api-key" \
-            -w 2>/dev/null
-    )"; then
-        export CALLUP_NZBGEEK_API_KEY
-    fi
 fi
 
 CALLUP_REVISION="$(tr -d '\n' < "$revision_file")"

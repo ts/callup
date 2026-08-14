@@ -28,13 +28,18 @@ Provider credentials belong only to the running Callup service; never copy them
 into chat, source, command arguments, logs, fixtures, or browser-visible
 responses.
 
+Automatic metadata suppliers may also require backend credentials. The local
+launch scripts load `.env`, and the TMDB supplier reads its backend-only
+`CALLUP_TMDB_ACCESS_TOKEN` from that environment. It is not a user-managed
+connection in Settings.
+
 ## Connection setup
 
 Open **Connections** in Callup to configure NZBGeek and either SABnzbd or
 NZBGet. Secrets are written to an owner-only file outside the repository and
-never returned to the browser after submission. The existing macOS Keychain
-item and environment variables remain optional development and deployment
-fallbacks; neither is required to start Callup.
+never returned to the browser after submission. Environment variables remain
+optional development and deployment fallbacks; neither is required to start
+Callup.
 
 ## Install once
 

@@ -177,6 +177,40 @@ import Testing
     try await second.close()
 }
 
+@Test func trackedMovieMetadataCanHydrateWithoutResettingPreferencesOrReadding() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let summary = Movie(
+        id: ProviderReference(provider: "tmdb", value: "284"),
+        title: "The Apartment",
+        releaseYear: 1960,
+        imageURL: nil
+    )
+    let detailed = Movie(
+        id: summary.id,
+        title: summary.title,
+        releaseYear: summary.releaseYear,
+        releaseDate: "1960-06-21",
+        imageURL: nil,
+        imdbID: "tt0053604"
+    )
+    let settings = MovieDownloadSettings(
+        preferredResolution: .p2160,
+        preferredVideoCodec: .av1
+    )
+
+    _ = try await store.trackMovie(summary)
+    _ = try await store.setMovieDownloadSettings(movieID: summary.id, settings: settings)
+    let hydrated = try await store.updateTrackedMovieMetadata(detailed)
+
+    #expect(hydrated?.movie == detailed)
+    #expect(hydrated?.downloadSettings == settings)
+
+    try await store.untrackMovie(id: summary.id)
+    #expect(try await store.updateTrackedMovieMetadata(detailed) == nil)
+    #expect(try await store.trackedMovies().isEmpty)
+    try await store.close()
+}
+
 @Test func trackedTelevisionSeriesSurviveReopen() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "callup-tracked-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -569,6 +603,22 @@ import Testing
     try await store.close()
 }
 
+@Test func movieMetadataUsesItsSupplierCache() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let upstream = MovieMetadataStub(movies: [fixtureMovie(title: "First")])
+    let cached = CachedMovieMetadataProvider(upstream: upstream, store: store)
+
+    let first = try await cached.searchMovies(query: " The Apartment ")
+    await upstream.setMovies([fixtureMovie(title: "Changed upstream")])
+    let second = try await cached.searchMovies(query: "the apartment")
+
+    #expect(first.map(\.title) == ["First"])
+    #expect(second.map(\.title) == ["First"])
+    #expect(await upstream.searchCount == 1)
+
+    try await store.close()
+}
+
 @Test func televisionReleaseSearchUsesTheSameStore() async throws {
     let store = try await ApplicationStore.inMemory()
     let upstream = ReleaseIndexerStub(page: releasePage(total: 2))
@@ -591,6 +641,22 @@ import Testing
         season: 1,
         episode: nil
     )
+
+    #expect(first.total == 2)
+    #expect(second.total == 2)
+    #expect(await upstream.searchCount == 1)
+
+    try await store.close()
+}
+
+@Test func movieReleaseSearchUsesTheSameStore() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let upstream = MovieReleaseIndexerStub(page: releasePage(total: 2))
+    let cached = CachedMovieReleaseIndexer(upstream: upstream, store: store)
+
+    let first = try await cached.searchMovies(query: "The Apartment", imdbID: "tt0053604")
+    await upstream.setPage(releasePage(total: 99))
+    let second = try await cached.searchMovies(query: "the apartment", imdbID: "tt0053604")
 
     #expect(first.total == 2)
     #expect(second.total == 2)
@@ -630,6 +696,33 @@ private actor MetadataStub: TelevisionMetadataSupplier {
     }
 }
 
+private actor MovieMetadataStub: MovieMetadataSupplier {
+    nonisolated let metadataSupplier = MetadataSupplier(
+        id: "movie-fixture",
+        displayName: "Movie Fixture",
+        supportedMediaKinds: [.movie]
+    )
+    private var movies: [Movie]
+    private(set) var searchCount = 0
+
+    init(movies: [Movie]) {
+        self.movies = movies
+    }
+
+    func setMovies(_ movies: [Movie]) {
+        self.movies = movies
+    }
+
+    func searchMovies(query: String) -> [Movie] {
+        searchCount += 1
+        return movies
+    }
+
+    func movie(for movieID: ProviderReference) -> Movie {
+        movies.first { $0.id == movieID } ?? movies[0]
+    }
+}
+
 private actor ReleaseIndexerStub: TelevisionReleaseIndexer {
     private var page: ReleaseSearchPage
     private(set) var searchCount = 0
@@ -655,6 +748,24 @@ private actor ReleaseIndexerStub: TelevisionReleaseIndexer {
     }
 }
 
+private actor MovieReleaseIndexerStub: MovieReleaseIndexer {
+    private var page: ReleaseSearchPage
+    private(set) var searchCount = 0
+
+    init(page: ReleaseSearchPage) {
+        self.page = page
+    }
+
+    func setPage(_ page: ReleaseSearchPage) {
+        self.page = page
+    }
+
+    func searchMovies(query: String, imdbID: String?) -> ReleaseSearchPage {
+        searchCount += 1
+        return page
+    }
+}
+
 private func series(id: String = "one", title: String) -> TelevisionSeries {
     TelevisionSeries(
         id: ProviderReference(provider: "fixture", value: id),
@@ -662,6 +773,15 @@ private func series(id: String = "one", title: String) -> TelevisionSeries {
         premieredYear: nil,
         status: nil,
         network: nil,
+        imageURL: nil
+    )
+}
+
+private func fixtureMovie(id: String = "one", title: String) -> Movie {
+    Movie(
+        id: ProviderReference(provider: "movie-fixture", value: id),
+        title: title,
+        releaseYear: nil,
         imageURL: nil
     )
 }

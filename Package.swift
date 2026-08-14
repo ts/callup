@@ -32,6 +32,7 @@ let package = Package(
             dependencies: ["CallupCore", "CallupDownloadClients", "CallupPersistence"]
         ),
         .target(name: "CallupTVMaze", dependencies: ["CallupCore"]),
+        .target(name: "CallupTMDB", dependencies: ["CallupCore"]),
         .executableTarget(
             name: "CallupServer",
             dependencies: [
@@ -41,6 +42,7 @@ let package = Package(
                 "CallupNewznab",
                 "CallupPersistence",
                 "CallupTVMaze",
+                "CallupTMDB",
                 .product(name: "Vapor", package: "vapor"),
             ]
         ),
@@ -65,6 +67,10 @@ let package = Package(
         .testTarget(
             name: "CallupTVMazeTests",
             dependencies: ["CallupCore", "CallupTVMaze"]
+        ),
+        .testTarget(
+            name: "CallupTMDBTests",
+            dependencies: ["CallupCore", "CallupTMDB"]
         ),
     ]
 )

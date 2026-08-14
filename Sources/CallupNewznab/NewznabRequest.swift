@@ -47,6 +47,28 @@ public struct NewznabTVSearch: Equatable, Sendable {
     }
 }
 
+public struct NewznabMovieSearch: Equatable, Sendable {
+    public let query: String
+    public let imdbID: String?
+    public let categories: [Int]
+    public let limit: Int
+    public let offset: Int
+
+    public init(
+        query: String,
+        imdbID: String? = nil,
+        categories: [Int] = [],
+        limit: Int = 100,
+        offset: Int = 0
+    ) {
+        self.query = query
+        self.imdbID = imdbID
+        self.categories = categories
+        self.limit = limit
+        self.offset = offset
+    }
+}
+
 public enum NewznabRequestError: Error, Equatable {
     case emptyAPIKey
     case invalidEndpoint
@@ -126,6 +148,57 @@ public enum NewznabRequestBuilder {
         }
         if !search.categories.isEmpty {
             items.append(URLQueryItem(name: "cat", value: search.categories.map(String.init).joined(separator: ",")))
+        }
+
+        components.queryItems = items
+        guard let url = components.url else {
+            throw NewznabRequestError.invalidEndpoint
+        }
+        return url
+    }
+
+    public static func movieSearchURL(
+        endpoint: URL,
+        apiKey: NewznabAPIKey,
+        search: NewznabMovieSearch
+    ) throws -> URL {
+        let query = search.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty || search.imdbID != nil else {
+            throw NewznabRequestError.emptyQuery
+        }
+        guard (1...100).contains(search.limit) else {
+            throw NewznabRequestError.invalidLimit
+        }
+        guard search.offset >= 0 else {
+            throw NewznabRequestError.invalidOffset
+        }
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false),
+              components.scheme != nil,
+              components.host != nil else {
+            throw NewznabRequestError.invalidEndpoint
+        }
+
+        var items = [
+            URLQueryItem(name: "t", value: "movie"),
+            URLQueryItem(name: "apikey", value: apiKey.value),
+            URLQueryItem(name: "extended", value: "1"),
+            URLQueryItem(name: "o", value: "xml"),
+            URLQueryItem(name: "limit", value: String(search.limit)),
+            URLQueryItem(name: "offset", value: String(search.offset)),
+        ]
+        if let imdbID = search.imdbID {
+            let normalized = imdbID.lowercased().hasPrefix("tt")
+                ? String(imdbID.dropFirst(2))
+                : imdbID
+            items.append(URLQueryItem(name: "imdbid", value: normalized))
+        } else {
+            items.append(URLQueryItem(name: "q", value: query))
+        }
+        if !search.categories.isEmpty {
+            items.append(URLQueryItem(
+                name: "cat",
+                value: search.categories.map(String.init).joined(separator: ",")
+            ))
         }
 
         components.queryItems = items

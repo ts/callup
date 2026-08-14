@@ -2,7 +2,7 @@
 
 Status: active
 Owner: ts
-Last updated: 2026-08-06
+Last updated: 2026-08-11
 
 ## Start here
 
@@ -17,9 +17,10 @@ continue without reconstructing the product decisions from chat.
   coherent tested build at one dependable URL. It survives Codex tasks and
   restarts independently; `/health` identifies its branch and revision.
   Committing or merging is not a prerequisite for browser review.
-- Browser UI performs live TVmaze series search, persists an intentionally
-  minimal tracked-shows list, labels each tracked show as ended or with its next
-  announced air date, and displays seasons and episodes. The current source also
+- Browser UI performs one mixed TVMaze show and TMDB movie search and persists
+  shows and movies in one minimal tracked view. It labels each tracked show as
+  ended or with its next announced air date and displays seasons and episodes.
+  The current source also
   offers an unranked, read-only release search for each season
   through NZBGeek. The UI labels these provider roles separately so indexer
   connectivity does not imply metadata search switched.
@@ -38,6 +39,12 @@ continue without reconstructing the product decisions from chat.
   confirmed indexer result through a manual **Send to SABnzbd** action.
 - Download activity and completed history live in a separate, on-demand
   Downloads panel instead of occupying the tracked-shows flow.
+- In its eventual dedicated LXC, Callup will share the canonical `/data` bind
+  mount and scan `/data/complete/Television` and `/data/complete/Movies` into a
+  short-lived inventory. It replaces—not integrates with—Sonarr, Radarr, and
+  Prowlarr. It marks conservative movie and standard `S01E01`/`1x01` episode
+  matches as on disk; it does not rename, move, import, or otherwise manage
+  files.
 - Callup fetches the NZB server-side, uploads it to SABnzbd, persists the
   provider reference and returned SAB job ID, prevents repeat submission, and
   reconciles sending, snatched, downloading, downloaded, and blocked states.
@@ -46,26 +53,29 @@ continue without reconstructing the product decisions from chat.
   Downloaded episodes render unchecked in their season checklist and are
   therefore omitted from later checked-episode searches.
 - Connection secrets live in an owner-only file beside SQLite, never in SQLite,
-  source models, logs, or browser responses. Environment and macOS Keychain
-  loading remain optional fallbacks rather than setup requirements.
-- Fifty-five tests pass. Live TVmaze and controlled NZBGeek smoke tests passed.
+  source models, logs, or browser responses. A gitignored `.env` supplies
+  optional operator and development overrides; Callup does not use Keychain.
+- TMDB is a typed, cached movie metadata supplier loaded from a backend-only
+  bearer token. Tracking returns after its local write and optimistically
+  hydrates detail metadata in the background. Tracked movies expose cached,
+  identity-checked, preference-ranked Newznab matches but cannot yet submit one.
+- Sixty-four tests pass.
 - The running `sqlite-cache` build introduces the first application-store slice
   with one explicitly confirmed manual SABnzbd submission seam. No automated
   recommendation queueing, media renaming, or library management exists yet.
 
 ### Immediate next step
 
-Complete the atomic media-model checkpoint, then add the first read-only movie
-metadata search. Movies must prove the shared model without introducing a
-parallel application or disturbing the working television flow.
+Add explicit submission of one re-verified movie candidate through SABnzbd's
+stable `movies` category without disturbing the television acquisition path.
 
 ### Secret-handling rule learned during setup
 
 Never ask the user to paste a secret into chat, a screenshot, a literal shell
 command, or an interactive `read` embedded in a pasted multi-line command. The
 original key was exposed during a flawed setup instruction and must not be
-reused. The replacement key can remain in the login Keychain as a development
-fallback, while the in-app Connections panel is the normal setup path. Saved
+reused. Operator credentials belong in the gitignored `.env`, while the in-app
+Connections panel is the normal setup path for user-owned services. Saved
 secrets remain server-side in an owner-only file. The temporary clipboard
 launcher was removed after startup.
 
@@ -109,9 +119,10 @@ Given a series and season, find available releases for its episodes, choose sane
 candidates, show the choices, and send the approved downloads to SABnzbd.
 
 Television is the first vertical slice, not the product boundary. SABnzbd
-remains responsible for downloading, while Callup supplies a thin destination
-layer: every tracked show gets its own folder and season folders are enabled by
-default as a per-show setting.
+remains responsible for downloading and unpacking. Callup submits through one
+stable category per media kind and will own final library placement in a
+separate importer module; it never creates per-show or per-season downloader
+categories.
 
 ## MVP interaction
 
@@ -162,8 +173,8 @@ The primary action is **Get this season**, not profile administration.
 
 ### Deferred from the first vertical slice
 
-- Renaming, moving, importing, or owning a media library beyond choosing the
-  show and optional season destination folders at submission time.
+- Renaming, moving, importing, or owning a media library. Canonical destination
+  preferences remain Callup concerns rather than downloader configuration.
 - Sonarr configuration or compatibility as a product requirement.
 - Automatic upgrades of existing files.
 - Additional live indexers and download clients. The domain and persistence
@@ -365,9 +376,8 @@ concepts; its human-facing preference types remain useful.
 ### Milestone 3 — Queue to SABnzbd
 
 - [ ] Display the complete queue plan before mutation.
-- [x] Submit one explicitly confirmed television candidate to a Callup-managed
-  SABnzbd category that targets the tracked show's folder and, by default, its
-  season folder.
+- [x] Submit one explicitly confirmed television candidate through SABnzbd's
+  stable `tv` category without reading or mutating downloader configuration.
 - [x] Reserve the provider reference before submission and persist the returned
   SAB job ID.
 - [x] Reconcile snatched, downloading, downloaded, and blocked state.
@@ -471,16 +481,16 @@ concepts; its human-facing preference types remain useful.
 
 ## Active step
 
-**Stabilize the atomic media model, then prove it with read-only movie discovery
-before changing the primary UI or adding movie downloads.**
+**Prove the first explicit movie handoff through the existing atomic download
+pipeline, then keep importer and final-placement work separate.**
 
 ## Open questions
 
 - `/Users/ts/src/callup` is the canonical source repository; Git was initialized
   on `main` on 2026-08-06.
-- NZBGeek is the first indexer and exposes the Newznab protocol. The adapter
-  currently supports `tvsearch` request generation, pagination fields, and XML
-  release normalization. Live capabilities discovery remains unverified.
+- NZBGeek is the first indexer and exposes the Newznab protocol. Its live
+  capabilities advertise TV and movie search; the adapter normalizes both into
+  shared release candidates while keeping credentials and NZB URLs server-side.
 - TVmaze is the initial television metadata provider and requires no API key for
   the selected public endpoints.
 - Series identity must cross the metadata/indexer boundary using one canonical
@@ -496,7 +506,7 @@ before changing the primary UI or adding movie downloads.**
 - Sonarr, SABnzbd, and the indexer continue to operate independently.
 - Callup stores configured provider credentials outside SQLite. Its only
   external mutation is an explicitly confirmed, idempotently reserved manual
-  NZB submission to SABnzbd.
+  TV or movie NZB submission to SABnzbd.
 - With no `CALLUP_NZBGEEK_API_KEY`, `/health` reports the indexer as
   `not-configured` and `/api/tv/releases` returns HTTP 503 without an external
   request.
@@ -548,6 +558,9 @@ before changing the primary UI or adding movie downloads.**
 | 2026-08-10 | Moved SABnzbd reconciliation into a lifecycle-managed Swift worker | Active downloads progress without the Downloads screen being open; the worker runs immediately, repeats once per minute, isolates per-job failures, and cancels before SQLite closes | Forty-seven tests, including worker start/stop and partial-failure coverage |
 | 2026-08-10 | Separated show tracking from episode monitoring | New shows default to future episodes; All/Future/None supplies the baseline for newly discovered episodes and checkboxes persist explicit overrides without changing the policy | Fifty tests, including cutoff, override, persistence, and legacy-payload coverage; embedded JavaScript syntax check |
 | 2026-08-10 | Reduced television acquisition to atomic media targets | Tracked roots share one kind-keyed store; downloads reference leaf targets and ancestors; movies prove the same shape without a parallel persistence pipeline | Full test suite, embedded JavaScript syntax check, and isolated migration of the live database snapshot |
+| 2026-08-11 | Removed per-show and per-season SABnzbd categories | SABnzbd is a transport adapter using stable media categories; final placement belongs to a future modular Callup importer | Full test suite and source search for removed category mutation APIs |
+| 2026-08-11 | Added read-only movie release matching | Tracking optimistically hydrates cached TMDB detail without delaying the local write; matches search Newznab by normalized IMDb identity, reject reported conflicts, and rank the full list using persisted movie preferences | Sixty-three tests and embedded JavaScript syntax check |
+| 2026-08-11 | Added the first manual movie handoff | A selected result is re-verified server-side, fetched without exposing its NZB URL, submitted idempotently to SABnzbd's stable `movies` category, and associated with the tracked movie | Sixty-three tests, including durable generic movie acquisition context; embedded JavaScript syntax check |
 
 ## Reference
 

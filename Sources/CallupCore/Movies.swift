@@ -4,6 +4,7 @@ public struct Movie: Codable, Equatable, Sendable {
     public let id: ProviderReference
     public let title: String
     public let releaseYear: Int?
+    public let releaseDate: String?
     public let imageURL: String?
     public let imdbID: String?
 
@@ -11,15 +12,26 @@ public struct Movie: Codable, Equatable, Sendable {
         id: ProviderReference,
         title: String,
         releaseYear: Int?,
+        releaseDate: String? = nil,
         imageURL: String?,
         imdbID: String? = nil
     ) {
         self.id = id
         self.title = title
         self.releaseYear = releaseYear
+        self.releaseDate = releaseDate
         self.imageURL = imageURL
         self.imdbID = imdbID
     }
+}
+
+public protocol MovieMetadataProvider: Sendable {
+    func searchMovies(query: String) async throws -> [Movie]
+    func movie(for movieID: ProviderReference) async throws -> Movie
+}
+
+public protocol MovieMetadataSupplier: MovieMetadataProvider {
+    var metadataSupplier: MetadataSupplier { get }
 }
 
 public struct MovieDownloadSettings: Codable, Equatable, VideoPreferenceSettings, Sendable {

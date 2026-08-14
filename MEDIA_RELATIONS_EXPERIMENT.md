@@ -1,6 +1,6 @@
 # Media Relations Experiment
 
-Status: hypothesis only; no implementation decision yet.
+Status: active thin-slice experiment.
 
 ## Question
 
@@ -168,3 +168,20 @@ identity instead of naming TVMaze directly.
 
 This does not yet define Callup-owned media identity, merge the same work across
 suppliers, or create universal search. Those remain separate experiments.
+
+## First universal-search proof
+
+The first product search now asks the typed television and movie catalogs
+concurrently, then returns one discriminated `kind + media` result stream.
+TVMaze and TMDB keep their provider-specific decoding and caches; the UI keeps
+typed show behavior while rendering movie discovery in the same result grid.
+The next thin slice exposes the already-shared tracked-media persistence for
+movies and renders shows and movies in one tracked view. It deliberately does
+not add movie detail routes or acquisition.
+
+The following slice resolves one tracked movie through cached detail metadata,
+searches Newznab using its normalized IMDb identity, and ranks the read-only
+candidate list with the movie's persisted video preferences. Submission remains
+a separate mutation. Tracking starts detail hydration after its local write, so
+identity enrichment normally finishes before acquisition without delaying the
+user action or allowing a late response to re-add removed media.

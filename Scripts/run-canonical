@@ -6,24 +6,16 @@ set +x
 project_directory="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_directory"
 
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 branch="$(git branch --show-current)"
 revision="$(git rev-parse --short HEAD)"
 if [[ -n "$(git status --porcelain)" ]]; then
     revision="${revision}-dirty"
-fi
-
-if [[ -z "${CALLUP_NZBGEEK_API_KEY:-}" ]]; then
-    if [[ "$(uname -s)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
-        keychain_account="$(id -un)"
-        if CALLUP_NZBGEEK_API_KEY="$(
-            security find-generic-password \
-                -a "$keychain_account" \
-                -s "callup-nzbgeek-api-key" \
-                -w 2>/dev/null
-        )"; then
-            export CALLUP_NZBGEEK_API_KEY
-        fi
-    fi
 fi
 
 export CALLUP_REVISION="${branch}@${revision}"
