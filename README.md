@@ -33,6 +33,18 @@ archive, then installs and enables `callup.service`. Runtime configuration is
 preserved at `/etc/callup/callup.env`; set the optional library roots there
 before restarting the service.
 
+### Proxmox VE
+
+For an optional dedicated LXC, run the versioned creator on the Proxmox host.
+It creates a small unprivileged Debian 13 container, installs the same verified
+release, and refuses to overwrite an existing container. Set
+`CALLUP_MEDIA_SOURCE` only when the host path should be bind-mounted as
+`/data`.
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.2/deploy/proxmox-create-lxc.sh)"
+```
+
 ## Restart the live app
 
 From this directory, run:
