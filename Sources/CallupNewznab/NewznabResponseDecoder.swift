@@ -1,5 +1,8 @@
 import CallupCore
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 public typealias NewznabPage = ReleaseSearchPage
 

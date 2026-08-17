@@ -1,0 +1,20 @@
+[Unit]
+Description=Callup media acquisition service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=callup
+Group=media
+Environment=CALLUP_PORT=8484
+Environment=CALLUP_DATABASE_PATH=/var/lib/callup/callup.sqlite
+Environment=CALLUP_CONNECTIONS_PATH=/var/lib/callup/connections.json
+Environment=CALLUP_TV_LIBRARY_PATH=/data/complete/Television
+Environment=CALLUP_MOVIE_LIBRARY_PATH=/data/complete/Movies
+ExecStart=/opt/callup/bin/callup
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

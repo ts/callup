@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+version=${1:?Usage: Scripts/package-linux-release VERSION}
+binary=.build/x86_64-swift-linux-musl/release/callup
+release_dir="dist/callup-${version}-linux-amd64"
+archive="dist/callup-${version}-linux-amd64.tar.gz"
+
+test -x "$binary" || { echo "Missing static Linux artifact: $binary" >&2; exit 1; }
+
+rm -rf "$release_dir"
+mkdir -p "$release_dir"
+install -m 0755 "$binary" "$release_dir/callup"
+install -m 0755 deploy/install.sh "$release_dir/install.sh"
+install -m 0644 deploy/callup.service "$release_dir/callup.service"
+tar -C dist -czf "$archive" "$(basename "$release_dir")"
+shasum -a 256 "$archive" > "${archive}.sha256"
+echo "$archive"

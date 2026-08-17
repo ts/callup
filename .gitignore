@@ -1,5 +1,7 @@
 .build/
+dist/
 .swiftpm/
+.swift-version
 .env
 .vscode/
 Research/Recordings/

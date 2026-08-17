@@ -45,6 +45,9 @@ continue without reconstructing the product decisions from chat.
   Prowlarr. It marks conservative movie and standard `S01E01`/`1x01` episode
   matches as on disk; it does not rename, move, import, or otherwise manage
   files.
+- The Linux deployment targets Debian's native Swift 6.0 toolchain. Keep the
+  package manifest at Swift tools 6.0 unless an observed source requirement
+  needs a newer toolchain.
 - Callup fetches the NZB server-side, uploads it to SABnzbd, persists the
   provider reference and returned SAB job ID, prevents repeat submission, and
   reconciles sending, snatched, downloading, downloaded, and blocked states.
