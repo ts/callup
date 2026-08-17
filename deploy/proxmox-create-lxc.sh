@@ -5,7 +5,7 @@ set -eu
 : "${CALLUP_HOSTNAME:=callup}"
 : "${CALLUP_STORAGE:=local}"
 : "${CALLUP_TEMPLATE_STORAGE:=local}"
-: "${CALLUP_RELEASE:=0.1.0-dev.1}"
+: "${CALLUP_RELEASE:?Set CALLUP_RELEASE to the Callup release version to install.}"
 : "${CALLUP_CORES:=1}"
 : "${CALLUP_MEMORY:=768}"
 : "${CALLUP_SWAP:=256}"
