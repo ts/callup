@@ -18,6 +18,21 @@ overrides.
 
 Television is the first implementation slice. It is not the product boundary.
 
+## Install on Linux
+
+Releases contain a prebuilt, static `x86_64` Linux executable. Installation
+never compiles Swift on the destination host. To install a specific release as
+root, use its immutable tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.1/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.1
+```
+
+The bootstrap downloads the release archive and its SHA-256 file, verifies the
+archive, then installs and enables `callup.service`. Runtime configuration is
+preserved at `/etc/callup/callup.env`; set the optional library roots there
+before restarting the service.
+
 ## Restart the live app
 
 From this directory, run:
