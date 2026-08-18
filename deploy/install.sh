@@ -21,5 +21,6 @@ if [ ! -e /etc/callup/callup.env ]; then
 fi
 
 systemctl daemon-reload
-systemctl enable --now callup.service
+systemctl enable callup.service
+systemctl restart callup.service
 systemctl --no-pager --full status callup.service
