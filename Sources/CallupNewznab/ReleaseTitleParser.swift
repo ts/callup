@@ -10,30 +10,7 @@ enum ReleaseTitleParser {
     static func parse(_ title: String) -> ParsedReleaseTitle {
         ParsedReleaseTitle(
             coverage: parseCoverage(title),
-            traits: ReportedReleaseTraits(
-                videoCodec: firstToken(in: title, tokens: [
-                    (#"(?i)(?<![A-Z0-9])(?:HEVC|H[ .]?265|X265)(?![A-Z0-9])"#, "HEVC"),
-                    (#"(?i)(?<![A-Z0-9])(?:AVC|H[ .]?264|X264)(?![A-Z0-9])"#, "AVC"),
-                    (#"(?i)(?<![A-Z0-9])AV1(?![A-Z0-9])"#, "AV1"),
-                    (#"(?i)(?<![A-Z0-9])(?:MPEG[ .-]?2|MPEG2)(?![A-Z0-9])"#, "MPEG-2"),
-                ]),
-                resolution: firstToken(in: title, tokens: [
-                    (#"(?i)(?<![A-Z0-9])(?:2160P|4K|UHD)(?![A-Z0-9])"#, "2160p"),
-                    (#"(?i)(?<![A-Z0-9])1080P(?![A-Z0-9])"#, "1080p"),
-                    (#"(?i)(?<![A-Z0-9])1080I(?![A-Z0-9])"#, "1080i"),
-                    (#"(?i)(?<![A-Z0-9])720P(?![A-Z0-9])"#, "720p"),
-                    (#"(?i)(?<![A-Z0-9])(?:576P|576I)(?![A-Z0-9])"#, "576p"),
-                    (#"(?i)(?<![A-Z0-9])(?:480P|480I|SDTV)(?![A-Z0-9])"#, "480p"),
-                ]),
-                source: firstToken(in: title, tokens: [
-                    (#"(?i)(?<![A-Z0-9])WEB[ ._-]?DL(?![A-Z0-9])"#, "WEB-DL"),
-                    (#"(?i)(?<![A-Z0-9])WEB[ ._-]?RIP(?![A-Z0-9])"#, "WEBRip"),
-                    (#"(?i)(?<![A-Z0-9])(?:BLU[ ._-]?RAY|BDRIP|BRRIP)(?![A-Z0-9])"#, "BluRay"),
-                    (#"(?i)(?<![A-Z0-9])HDTV(?![A-Z0-9])"#, "HDTV"),
-                    (#"(?i)(?<![A-Z0-9])DVD(?:RIP)?(?![A-Z0-9])"#, "DVD"),
-                    (#"(?i)(?<![A-Z0-9])WEB(?![A-Z0-9])"#, "WEB"),
-                ])
-            )
+            traits: ReportedReleaseTraits.inferred(from: title)
         )
     }
 
@@ -107,20 +84,6 @@ enum ReleaseTitleParser {
     private static func episodeRange(from first: Int, through last: Int) -> [Int]? {
         guard first <= last, last - first < 200 else { return nil }
         return Array(first...last)
-    }
-
-    private static func firstToken(
-        in title: String,
-        tokens: [(pattern: String, value: String)]
-    ) -> String? {
-        tokens.first { matches(title, pattern: $0.pattern) }?.value
-    }
-
-    private static func matches(_ value: String, pattern: String) -> Bool {
-        regex(pattern).firstMatch(
-            in: value,
-            range: NSRange(value.startIndex..., in: value)
-        ) != nil
     }
 
     private static func captures(in value: String, pattern: String) -> [String]? {

@@ -120,8 +120,16 @@ import Testing
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: drive, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: show, withIntermediateDirectories: true)
-    FileManager.default.createFile(atPath: drive.appending(path: "Drive.2011.1080p.mkv").path, contents: Data())
-    FileManager.default.createFile(atPath: show.appending(path: "whatever-S01E02.mkv").path, contents: Data())
+    let movieFile = drive.appending(path: "Drive.2011.1080p.HEVC.BluRay.mkv")
+    let episodeFile = show.appending(path: "whatever-S01E02.720p.x264.WEB-DL.mkv")
+    FileManager.default.createFile(
+        atPath: movieFile.path,
+        contents: Data(repeating: 1, count: 3_145_728)
+    )
+    FileManager.default.createFile(
+        atPath: episodeFile.path,
+        contents: Data(repeating: 1, count: 1_024)
+    )
 
     let inventory = LibraryInventory()
     let snapshot = await inventory.snapshot(for: LibrarySettings(
@@ -163,4 +171,23 @@ import Testing
 
     #expect(snapshot.contains(movie))
     #expect(snapshot.episodeIDsOnDisk(for: series, episodes: [found, missing]) == Set([found.id]))
+    let movieDetails = try #require(snapshot.filesOnDisk(for: movie).first)
+    #expect(movieDetails.name == "Drive.2011.1080p.HEVC.BluRay.mkv")
+    #expect(movieDetails.relativePath == "Drive (2011)/Drive.2011.1080p.HEVC.BluRay.mkv")
+    #expect(movieDetails.sizeBytes == 3_145_728)
+    #expect(movieDetails.inferredTraits == ReportedReleaseTraits(
+        videoCodec: "HEVC",
+        resolution: "1080p",
+        source: "BluRay"
+    ))
+    let episodeDetails = try #require(
+        snapshot.episodeFilesOnDisk(for: series, episodes: [found, missing])[found.id]?.first
+    )
+    #expect(episodeDetails.name == "whatever-S01E02.720p.x264.WEB-DL.mkv")
+    #expect(episodeDetails.sizeBytes == 1_024)
+    #expect(episodeDetails.inferredTraits == ReportedReleaseTraits(
+        videoCodec: "AVC",
+        resolution: "720p",
+        source: "WEB-DL"
+    ))
 }

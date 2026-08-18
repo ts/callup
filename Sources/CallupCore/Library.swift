@@ -10,6 +10,28 @@ public struct LibrarySettings: Codable, Equatable, Sendable {
     }
 }
 
+public struct LibraryFileDetails: Codable, Equatable, Sendable {
+    public let name: String
+    public let relativePath: String
+    public let sizeBytes: Int64?
+    public let modifiedAt: Date?
+    public let inferredTraits: ReportedReleaseTraits
+
+    public init(
+        name: String,
+        relativePath: String,
+        sizeBytes: Int64?,
+        modifiedAt: Date?,
+        inferredTraits: ReportedReleaseTraits
+    ) {
+        self.name = name
+        self.relativePath = relativePath
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
+        self.inferredTraits = inferredTraits
+    }
+}
+
 public struct LibrarySnapshot: Sendable {
     private let televisionFiles: [LibraryFile]
     private let movieFiles: [LibraryFile]
@@ -20,16 +42,32 @@ public struct LibrarySnapshot: Sendable {
     }
 
     public func contains(_ movie: Movie) -> Bool {
-        movieFiles.contains { $0.matches(movie: movie) }
+        !filesOnDisk(for: movie).isEmpty
+    }
+
+    public func filesOnDisk(for movie: Movie) -> [LibraryFileDetails] {
+        movieFiles.filter { $0.matches(movie: movie) }.map(\.details).sorted {
+            $0.relativePath < $1.relativePath
+        }
     }
 
     public func episodeIDsOnDisk(
         for series: TelevisionSeries,
         episodes: [TelevisionEpisode]
     ) -> Set<ProviderReference> {
-        Set(episodes.compactMap { episode in
-            televisionFiles.contains { $0.matches(series: series, episode: episode) }
-                ? episode.id : nil
+        Set(episodeFilesOnDisk(for: series, episodes: episodes).keys)
+    }
+
+    public func episodeFilesOnDisk(
+        for series: TelevisionSeries,
+        episodes: [TelevisionEpisode]
+    ) -> [ProviderReference: [LibraryFileDetails]] {
+        Dictionary(uniqueKeysWithValues: episodes.compactMap { episode in
+            let matches = televisionFiles
+                .filter { $0.matches(series: series, episode: episode) }
+                .map(\.details)
+                .sorted { $0.relativePath < $1.relativePath }
+            return matches.isEmpty ? nil : (episode.id, matches)
         })
     }
 }
@@ -73,10 +111,15 @@ public actor LibraryInventory {
               !root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
         }
-        let url = URL(fileURLWithPath: root)
+        let url = URL(fileURLWithPath: root).resolvingSymlinksInPath()
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
 
-        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isHiddenKey]
+        let keys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .isHiddenKey,
+            .fileSizeKey,
+            .contentModificationDateKey,
+        ]
         guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: Array(keys),
@@ -90,7 +133,12 @@ public actor LibraryInventory {
                   LibraryFile.videoExtensions.contains(fileURL.pathExtension.lowercased()) else {
                 continue
             }
-            files.append(LibraryFile(url: fileURL, root: url))
+            files.append(LibraryFile(
+                url: fileURL,
+                root: url,
+                sizeBytes: values.fileSize.map(Int64.init),
+                modifiedAt: values.contentModificationDate
+            ))
         }
         return files
     }
@@ -101,13 +149,34 @@ struct LibraryFile: Sendable {
 
     let components: [[String]]
     let filename: [String]
+    let name: String
+    let relativePath: String
+    let sizeBytes: Int64?
+    let modifiedAt: Date?
 
-    init(url: URL, root: URL) {
-        let relative = String(url.path.dropFirst(root.path.count))
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let names = relative.split(separator: "/").map(String.init)
+    var details: LibraryFileDetails {
+        LibraryFileDetails(
+            name: name,
+            relativePath: relativePath,
+            sizeBytes: sizeBytes,
+            modifiedAt: modifiedAt,
+            inferredTraits: .inferred(from: name)
+        )
+    }
+
+    init(url: URL, root: URL, sizeBytes: Int64?, modifiedAt: Date?) {
+        let rootComponents = root.resolvingSymlinksInPath().pathComponents
+        let fileComponents = url.resolvingSymlinksInPath().pathComponents
+        let names = fileComponents.starts(with: rootComponents)
+            ? Array(fileComponents.dropFirst(rootComponents.count))
+            : [url.lastPathComponent]
+        let relative = names.joined(separator: "/")
         components = names.map { Self.tokens(for: $0) }
         filename = Self.tokens(for: url.deletingPathExtension().lastPathComponent)
+        name = url.lastPathComponent
+        relativePath = relative
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
     }
 
     func matches(movie: Movie) -> Bool {

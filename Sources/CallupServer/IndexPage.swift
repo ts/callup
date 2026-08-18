@@ -59,6 +59,7 @@ let indexHTML = #"""
     .connection-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .connection-status { color: #91a0b3; font-size: .88rem; }
     .connection-status.connected { color: #64d67c; }
+    .library-file { color: #738399; font-size: .82rem; overflow-wrap: anywhere; }
     .field { display: grid; gap: 6px; color: #b7c4d4; font-size: .9rem; }
     .field-note { color: #738399; font-size: .82rem; }
     .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -428,6 +429,7 @@ let displayedMovie = null;
 let activeDownloadClientKind = null;
 const downloadSubmissions = new Map();
 let onDiskEpisodeKeys = new Set();
+const onDiskEpisodeFiles = new Map();
 
 setTrackedView(loadTrackedView());
 renderRoute();
@@ -657,14 +659,24 @@ function applyEpisodeDownloadStates(items) {
 function applyEpisodeLibraryStates() {
   for (const row of document.querySelectorAll('[data-download-episode-key]')) {
     row.querySelector('.episode-library-state')?.remove();
+    row.querySelector('.episode-library-details')?.remove();
     if (!onDiskEpisodeKeys.has(row.dataset.downloadEpisodeKey)) continue;
     row.classList.add('has-download');
     const checkbox = row.querySelector('[data-episode-key]');
     if (checkbox) checkbox.checked = false;
     const badge = document.createElement('span');
     badge.className = 'episode-download-state episode-library-state';
-    badge.textContent = 'On disk';
+    const files = onDiskEpisodeFiles.get(row.dataset.downloadEpisodeKey) || [];
+    badge.textContent = libraryStateLabel(files);
+    badge.title = files.map(file => file.relativePath).join('\n');
     row.querySelector('.episode-title').append(badge);
+    if (files.length) {
+      const details = document.createElement('span');
+      details.className = 'episode-library-details';
+      details.textContent = `${row.querySelector('.meta').textContent ? ' · ' : ''}${libraryFileLabel(files)}`;
+      details.title = files.map(file => file.relativePath).join('\n');
+      row.querySelector('.meta').append(details);
+    }
   }
   for (const section of document.querySelectorAll('.season')) {
     const seasonCheckbox = section.querySelector('[data-season-choice]');
@@ -1046,7 +1058,7 @@ function renderTrackedMedia() {
         ? 'Ended'
         : `Next airing · ${item.nextAirDate ? formatAirDate(item.nextAirDate) : 'TBA'}`;
     } else if (item.onDisk) {
-      state.textContent = 'On disk';
+      state.textContent = libraryStateLabel(item.libraryFiles);
     } else {
       const downloadState = movieDownloadState(media);
       const upcoming = isFutureDate(media.releaseDate);
@@ -1059,6 +1071,12 @@ function renderTrackedMedia() {
           ? `Releases · ${formatAirDate(media.releaseDate)}`
           : 'Missing';
       }
+    }
+    const libraryFile = document.createElement('p');
+    libraryFile.className = 'library-file';
+    if (!isTelevision && item.libraryFiles?.length) {
+      libraryFile.textContent = libraryFileLabel(item.libraryFiles);
+      libraryFile.title = item.libraryFiles.map(file => file.relativePath).join('\n');
     }
     const actions = document.createElement('div');
     actions.className = 'series-actions';
@@ -1083,7 +1101,9 @@ function renderTrackedMedia() {
       : toggleTrackedMovie(media, remove)
     );
     actions.append(remove);
-    copy.append(heading, meta, state, actions);
+    copy.append(heading, meta, state);
+    if (libraryFile.textContent) copy.append(libraryFile);
+    copy.append(actions);
     card.append(image, copy);
     trackedResults.append(card);
   }
@@ -1249,6 +1269,10 @@ async function loadSeries(series, button) {
     ]);
     setLineup(lineup);
     onDiskEpisodeKeys = new Set((data.onDiskEpisodeIDs || []).map(providerKey));
+    onDiskEpisodeFiles.clear();
+    for (const match of data.onDiskEpisodes || []) {
+      onDiskEpisodeFiles.set(providerKey(match.episodeID), match.libraryFiles || []);
+    }
     renderSeasons(series, data.seasons, canChoose);
   } catch (error) {
     status.textContent = error.message;
@@ -1995,6 +2019,24 @@ function formatBytes(bytes) {
     unit += 1;
   }
   return `${value.toFixed(unit < 2 ? 0 : 1)} ${units[unit]}`;
+}
+
+function libraryStateLabel(files) {
+  const file = files?.[0];
+  if (!file) return 'On disk';
+  const traits = file.inferredTraits || {};
+  return [
+    'On disk',
+    traits.resolution,
+    traits.videoCodec,
+    traits.source,
+    formatBytes(file.sizeBytes)
+  ].filter(Boolean).join(' · ');
+}
+
+function libraryFileLabel(files) {
+  if (!files?.length) return '';
+  return files.length === 1 ? files[0].name : `${files[0].name} +${files.length - 1} more`;
 }
 
 function formatDate(value) {

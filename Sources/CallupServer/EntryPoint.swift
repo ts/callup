@@ -207,9 +207,11 @@ enum CallupServer {
             let snapshot = await library.snapshot(for: settings)
             let tracked = try await store.trackedMovies()
             return TrackedMovieListResponse(results: tracked.map {
-                TrackedMovieResponse(movie: $0.movie, addedAt: $0.addedAt,
-                                     downloadSettings: $0.downloadSettings,
-                                     onDisk: snapshot.contains($0.movie))
+                let files = snapshot.filesOnDisk(for: $0.movie)
+                return TrackedMovieResponse(movie: $0.movie, addedAt: $0.addedAt,
+                                            downloadSettings: $0.downloadSettings,
+                                            onDisk: !files.isEmpty,
+                                            libraryFiles: files)
             })
         }
 
@@ -477,11 +479,16 @@ enum CallupServer {
                 let snapshot = await library.snapshot(
                     for: configuredLibrarySettings()
                 )
+                let episodeFiles = snapshot.episodeFilesOnDisk(
+                    for: resolvedSeries,
+                    episodes: resolvedEpisodes
+                )
                 return SeasonListResponse(
                     seasons: TelevisionCatalog.seasons(from: resolvedEpisodes),
-                    onDiskEpisodeIDs: Array(
-                        snapshot.episodeIDsOnDisk(for: resolvedSeries, episodes: resolvedEpisodes)
-                    )
+                    onDiskEpisodeIDs: Array(episodeFiles.keys),
+                    onDiskEpisodes: episodeFiles.map {
+                        OnDiskEpisodeResponse(episodeID: $0.key, libraryFiles: $0.value)
+                    }
                 )
             } catch {
                 throw metadataAbort(error)
@@ -1218,6 +1225,7 @@ private struct TrackedMovieResponse: Content {
     let addedAt: Date
     let downloadSettings: MovieDownloadSettings
     let onDisk: Bool
+    let libraryFiles: [LibraryFileDetails]
 }
 
 private struct TrackMovieRequest: Content {
@@ -1252,6 +1260,7 @@ extension TrackedMovie: Content {}
 extension MovieDownloadSettings: Content {}
 extension TelevisionLineup: Content {}
 extension TelevisionDownloadSettings: Content {}
+extension LibraryFileDetails: Content {}
 
 private func localDateString(_ date: Date = Date()) -> String {
     let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
@@ -1266,6 +1275,12 @@ private func localDateString(_ date: Date = Date()) -> String {
 private struct SeasonListResponse: Content {
     let seasons: [TelevisionSeason]
     let onDiskEpisodeIDs: [ProviderReference]
+    let onDiskEpisodes: [OnDiskEpisodeResponse]
+}
+
+private struct OnDiskEpisodeResponse: Content {
+    let episodeID: ProviderReference
+    let libraryFiles: [LibraryFileDetails]
 }
 
 private struct ReleaseSearchResponse: Content {

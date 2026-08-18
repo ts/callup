@@ -32,7 +32,7 @@ never compiles Swift on the destination host. To install a specific release as
 root, use its immutable tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.11/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.11
+curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.13/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.13
 ```
 
 The bootstrap downloads the release archive and its SHA-256 file, verifies the
@@ -51,7 +51,7 @@ not be published.
 
 ```bash
 Scripts/build-public-linux-release
-Scripts/package-linux-release 0.1.0-dev.11
+Scripts/package-linux-release 0.1.0-dev.13
 ```
 
 ### Proxmox VE
@@ -63,7 +63,7 @@ release, and refuses to overwrite an existing container. Set
 `/data`.
 
 ```bash
-CALLUP_RELEASE=0.1.0-dev.11 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.11/deploy/proxmox-create-lxc.sh)"
+CALLUP_RELEASE=0.1.0-dev.13 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.13/deploy/proxmox-create-lxc.sh)"
 ```
 
 ## Restart the live app
