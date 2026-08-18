@@ -3,5 +3,6 @@ dist/
 .swiftpm/
 .swift-version
 .env
+Sources/CallupTMDB/BundledTMDBCredential.generated.swift
 .vscode/
 Research/Recordings/

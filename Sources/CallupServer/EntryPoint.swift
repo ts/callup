@@ -102,7 +102,10 @@ enum CallupServer {
                 try await metadata.searchSeries(query: query)
             }
             async let movies = searchResult {
-                try await movieMetadata?.searchMovies(query: query) ?? []
+                guard let movieMetadata else {
+                    throw MovieMetadataConfigurationError.unavailable
+                }
+                return try await movieMetadata.searchMovies(query: query)
             }
             let (televisionResult, movieResult) = await (television, movies)
             var metadataIssues: [MetadataIssue] = []
@@ -883,8 +886,7 @@ enum CallupServer {
     private static func configuredMovieMetadata(
         store: ApplicationStore
     ) -> MovieMetadataCatalog? {
-        guard let value = ProcessInfo.processInfo.environment["CALLUP_TMDB_ACCESS_TOKEN"],
-              let token = try? TMDBAccessToken(value) else {
+        guard let token = TMDBCredentialResolver.resolve() else {
             return nil
         }
         return MovieMetadataCatalog(suppliers: [
@@ -908,6 +910,8 @@ enum CallupServer {
     private static func metadataIssue(source: String, error: any Error) -> MetadataIssue {
         let message: String
         switch error {
+        case MovieMetadataConfigurationError.unavailable:
+            message = "Movie metadata is unavailable in this Callup build."
         case TMDBError.unauthorized:
             message = "TMDB rejected its access token."
         case TMDBError.rateLimited:
@@ -1087,6 +1091,10 @@ enum CallupServer {
             Abort(.badGateway, reason: "NZBGeek could not be reached.")
         }
     }
+}
+
+private enum MovieMetadataConfigurationError: Error {
+    case unavailable
 }
 
 private struct SeriesSearchResponse: Content {

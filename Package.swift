@@ -1,6 +1,12 @@
 // swift-tools-version: 6.0
 
 import PackageDescription
+import Foundation
+
+let generatedTMDBCredential = "Sources/CallupTMDB/BundledTMDBCredential.generated.swift"
+let tmdbExcludes = FileManager.default.fileExists(atPath: generatedTMDBCredential)
+    ? ["BundledTMDBCredential.none.swift"]
+    : []
 
 let package = Package(
     name: "Callup",
@@ -32,7 +38,11 @@ let package = Package(
             dependencies: ["CallupCore", "CallupDownloadClients", "CallupPersistence"]
         ),
         .target(name: "CallupTVMaze", dependencies: ["CallupCore"]),
-        .target(name: "CallupTMDB", dependencies: ["CallupCore"]),
+        .target(
+            name: "CallupTMDB",
+            dependencies: ["CallupCore"],
+            exclude: tmdbExcludes
+        ),
         .executableTarget(
             name: "CallupServer",
             dependencies: [

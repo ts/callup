@@ -29,6 +29,18 @@ public struct TMDBAccessToken: CustomStringConvertible, Sendable {
     }
 }
 
+public enum TMDBCredentialResolver {
+    public static func resolve(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundled: String? = BundledTMDBCredential.accessToken
+    ) -> TMDBAccessToken? {
+        [environment["CALLUP_TMDB_ACCESS_TOKEN"], bundled]
+            .compactMap { $0 }
+            .compactMap { try? TMDBAccessToken($0) }
+            .first
+    }
+}
+
 public actor TMDBClient: MovieMetadataSupplier {
     public static let providerName = "tmdb"
 

@@ -243,7 +243,7 @@ let indexHTML = #"""
     </div>
     <div class="metadata-credits">
       <h3>Metadata sources</h3>
-      <p class="muted">TVMaze and TMDB are built in, cached locally, and used automatically.</p>
+      <p class="muted">Callup uses TVMaze and TMDB for metadata and caches results locally.</p>
       <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" aria-label="The Movie Database">
         <img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_1-5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4.svg" alt="TMDB">
       </a>

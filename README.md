@@ -33,6 +33,12 @@ archive, then installs and enables `callup.service`. Runtime configuration is
 preserved at `/etc/callup/callup.env`; set the optional library roots there
 before restarting the service.
 
+Maintainers build that static artifact with `Scripts/build-linux-release`.
+The script requires the matching open-source Swift toolchain through `swiftly`
+and temporarily injects the Callup TMDB application credential from the
+gitignored `.env`; the generated credential source is removed after the build.
+`Scripts/package-linux-release VERSION` then creates the archive and checksum.
+
 ### Proxmox VE
 
 For an optional dedicated LXC, run the versioned creator on the Proxmox host.
@@ -97,10 +103,12 @@ The Connections screen is the normal setup path. Connection secrets are kept in
 an owner-readable `connections.json` beside the database and are never returned
 by the settings API. `CALLUP_NZBGEEK_API_KEY` and `CALLUP_NZBGEEK_URL` remain
 available as deployment fallbacks; a saved in-app indexer takes precedence.
-TMDB is an automatic metadata supplier whose backend-only read token comes from
-`CALLUP_TMDB_ACCESS_TOKEN`. Local launch scripts load deployment overrides from
-the gitignored `.env` file. `CALLUP_CONNECTIONS_PATH` can override the
-connection file location.
+TMDB is a built-in metadata supplier in official Callup builds and requires no
+operator setup. The release build injects Callup's read-only application token
+without committing it to source. `CALLUP_TMDB_ACCESS_TOKEN` remains an optional
+development or emergency override. Local launch scripts load build and runtime
+overrides from the gitignored `.env` file. `CALLUP_CONNECTIONS_PATH` can
+override the connection file location.
 
 In its homelab container, Callup reads the canonical final library roots
 `/data/complete/Television` and `/data/complete/Movies` (never SABnzbd's

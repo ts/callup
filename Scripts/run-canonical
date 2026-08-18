@@ -20,5 +20,5 @@ fi
 
 export CALLUP_REVISION="${branch}@${revision}"
 
-swift build
+"$project_directory/Scripts/with-bundled-tmdb-credential" swift build
 exec .build/debug/callup

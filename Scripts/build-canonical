@@ -5,7 +5,7 @@ set -euo pipefail
 project_directory="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_directory"
 
-/usr/bin/swift build -c release
+"$project_directory/Scripts/with-bundled-tmdb-credential" /usr/bin/swift build -c release
 
 branch="$(git branch --show-current)"
 revision="$(git rev-parse --short HEAD)"

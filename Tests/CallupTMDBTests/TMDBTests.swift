@@ -3,6 +3,28 @@ import Foundation
 import Testing
 @testable import CallupTMDB
 
+@Test func environmentTMDBCredentialOverridesTheBundledCredential() throws {
+    let token = try #require(TMDBCredentialResolver.resolve(
+        environment: ["CALLUP_TMDB_ACCESS_TOKEN": "environment-token"],
+        bundled: "bundled-token"
+    ))
+    let request = try TMDBRequestBuilder.searchMovies(
+        baseURL: #require(URL(string: "https://api.themoviedb.org/3")),
+        token: token,
+        query: "Alien"
+    )
+
+    #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer environment-token")
+}
+
+@Test func bundledTMDBCredentialIsTheAutomaticFallback() {
+    #expect(TMDBCredentialResolver.resolve(
+        environment: [:],
+        bundled: "bundled-token"
+    ) != nil)
+    #expect(TMDBCredentialResolver.resolve(environment: [:], bundled: nil) == nil)
+}
+
 @Test func buildsMovieSearchWithHeaderOnlyCredential() throws {
     let token = try TMDBAccessToken("fixture-token")
     let request = try TMDBRequestBuilder.searchMovies(
