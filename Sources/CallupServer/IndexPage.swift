@@ -45,8 +45,12 @@ let indexHTML = #"""
     .tracked-results.list-view { grid-template-columns: 1fr; gap: 0; }
     .tracked-results.list-view .series { grid-template-columns: 1fr; gap: 0; padding: 12px 0; background: transparent; border: 0; border-bottom: 1px solid #263244; border-radius: 0; }
     .tracked-results.list-view .poster { display: none; }
-    .tracked-results.list-view .series-copy { grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 1fr) minmax(130px, 1fr) auto; align-items: center; gap: 12px; }
-    .tracked-results.list-view .series-actions { flex-wrap: nowrap; justify-content: flex-end; }
+    .tracked-results.list-view .series-copy { grid-template-columns: minmax(170px, 1fr) minmax(50px, .35fr) minmax(170px, 1fr) minmax(180px, 1.4fr) auto; grid-template-areas: "heading meta state file actions"; align-items: center; gap: 12px; }
+    .tracked-results.list-view .media-heading { grid-area: heading; }
+    .tracked-results.list-view .series-copy > .meta { grid-area: meta; }
+    .tracked-results.list-view .airing-status { grid-area: state; }
+    .tracked-results.list-view .library-file { grid-area: file; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tracked-results.list-view .series-actions { grid-area: actions; flex-wrap: nowrap; justify-content: flex-end; }
     .connections { padding: 20px 0 4px; }
     .connections-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .connections-heading h2 { margin: 0; }
@@ -138,7 +142,7 @@ let indexHTML = #"""
       .search-form { flex-direction: column; }
       .connection-grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; }
-      .tracked-results.list-view .series-copy { grid-template-columns: 1fr; gap: 6px; }
+      .tracked-results.list-view .series-copy { grid-template-columns: 1fr; grid-template-areas: "heading" "meta" "state" "file" "actions"; gap: 6px; }
       .tracked-results.list-view .series-actions { justify-content: flex-start; margin-top: 3px; }
       .episode { grid-template-columns: 66px 1fr; }
       .episode.selectable { grid-template-columns: 18px 66px 1fr; }
