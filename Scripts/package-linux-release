@@ -8,6 +8,16 @@ archive="dist/callup-${version}-linux-amd64.tar.gz"
 
 test -x "$binary" || { echo "Missing static Linux artifact: $binary" >&2; exit 1; }
 
+case "$(file "$binary")" in
+  *"ELF 64-bit LSB executable, x86-64"*"statically linked"*) ;;
+  *) echo "Refusing to package a binary that is not static Linux x86_64: $binary" >&2; exit 1 ;;
+esac
+
+if find Package.swift Sources -type f -newer "$binary" -print -quit | grep -q .; then
+  echo "Refusing to package a stale binary; rebuild the public Linux release first." >&2
+  exit 1
+fi
+
 rm -rf "$release_dir"
 mkdir -p "$release_dir"
 install -m 0755 "$binary" "$release_dir/callup"

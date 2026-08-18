@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+project_directory="$(cd "$(dirname "$0")/.." && pwd)"
+generated_credential="$project_directory/Sources/CallupTMDB/BundledTMDBCredential.generated.swift"
+
+if [[ -e "$generated_credential" ]]; then
+    echo "Refusing to build a public artifact while a bundled TMDB credential exists." >&2
+    exit 1
+fi
+
+if ! command -v swiftly >/dev/null 2>&1; then
+    echo "swiftly is required so the static SDK uses the matching open-source Swift toolchain." >&2
+    exit 1
+fi
+
+cd "$project_directory"
+swiftly run swift build \
+    -c release \
+    --swift-sdk x86_64-swift-linux-musl \
+    --product callup

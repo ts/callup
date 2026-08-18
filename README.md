@@ -42,15 +42,15 @@ before restarting the service.
 
 Public artifacts are built from the token-free source with the matching
 open-source Swift toolchain and static Linux SDK, then packaged with
-`Scripts/package-linux-release VERSION`. `Scripts/build-linux-release` is only
-for private credential-bearing builds: it temporarily injects the TMDB token
-from the gitignored `.env`, removes the generated source afterward, and its
-output must not be published.
+`Scripts/package-linux-release VERSION`. The public build script selects the
+static x86_64 target explicitly so packaging cannot reuse a stale artifact from
+another architecture. `Scripts/build-linux-release` is only for private
+credential-bearing builds: it temporarily injects the TMDB token from the
+gitignored `.env`, removes the generated source afterward, and its output must
+not be published.
 
 ```bash
-swiftly run swift build -c release \
-  --swift-sdk x86_64-swift-linux-musl \
-  --product callup
+Scripts/build-public-linux-release
 Scripts/package-linux-release 0.1.0-dev.11
 ```
 
