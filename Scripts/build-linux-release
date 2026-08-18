@@ -3,7 +3,10 @@
 set -euo pipefail
 
 project_directory="$(cd "$(dirname "$0")/.." && pwd)"
-sdk="${CALLUP_SWIFT_SDK:-swift-6.3.3-RELEASE_static-linux-0.1.0}"
+# Select the release architecture explicitly. The official static SDK contains
+# both aarch64 and x86_64 targets, so selecting only its bundle ID is ambiguous
+# on Apple Silicon hosts.
+sdk="${CALLUP_SWIFT_SDK:-x86_64-swift-linux-musl}"
 
 if ! command -v swiftly >/dev/null 2>&1; then
     echo "swiftly is required so the static SDK uses the matching open-source Swift toolchain." >&2
