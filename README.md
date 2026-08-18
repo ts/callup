@@ -7,9 +7,9 @@ Callup uses one shared acquisition workflow for a user's `Lineup` of wanted
 media. One search combines cached TVMaze show metadata with cached TMDB movie
 metadata. Television continues through the existing tracked-show, episode,
 Newznab, and download workflow. Movies can be added to the same tracked view,
-and tracked movies can show read-only, preference-ranked Newznab matches. Movie
-submission is not part of this slice. The Connections screen configures
-NZBGeek and one SABnzbd or NZBGet download client.
+tracked movies can show preference-ranked Newznab matches, and a confirmed
+release can be sent to the same download client. The Connections screen
+configures NZBGeek, TMDB, and one SABnzbd or NZBGet download client.
 
 Tracked television separates following a show from wanting a particular
 episode. New shows monitor future episodes by default; **All**, **Future**, and
@@ -32,7 +32,7 @@ never compiles Swift on the destination host. To install a specific release as
 root, use its immutable tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.1/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.1
+curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.11/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.11
 ```
 
 The bootstrap downloads the release archive and its SHA-256 file, verifies the
@@ -40,11 +40,19 @@ archive, then installs and enables `callup.service`. Runtime configuration is
 preserved at `/etc/callup/callup.env`; set the optional library roots there
 before restarting the service.
 
-Maintainers build that static artifact with `Scripts/build-linux-release`.
-The script requires the matching open-source Swift toolchain through `swiftly`
-and temporarily injects the Callup TMDB application credential from the
-gitignored `.env`; the generated credential source is removed after the build.
-`Scripts/package-linux-release VERSION` then creates the archive and checksum.
+Public artifacts are built from the token-free source with the matching
+open-source Swift toolchain and static Linux SDK, then packaged with
+`Scripts/package-linux-release VERSION`. `Scripts/build-linux-release` is only
+for private credential-bearing builds: it temporarily injects the TMDB token
+from the gitignored `.env`, removes the generated source afterward, and its
+output must not be published.
+
+```bash
+swiftly run swift build -c release \
+  --swift-sdk x86_64-swift-linux-musl \
+  --product callup
+Scripts/package-linux-release 0.1.0-dev.11
+```
 
 ### Proxmox VE
 
@@ -55,7 +63,7 @@ release, and refuses to overwrite an existing container. Set
 `/data`.
 
 ```bash
-CALLUP_RELEASE=0.1.0-dev.9 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.9/deploy/proxmox-create-lxc.sh)"
+CALLUP_RELEASE=0.1.0-dev.11 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.11/deploy/proxmox-create-lxc.sh)"
 ```
 
 ## Restart the live app
@@ -110,12 +118,13 @@ The Connections screen is the normal setup path. Connection secrets are kept in
 an owner-readable `connections.json` beside the database and are never returned
 by the settings API. `CALLUP_NZBGEEK_API_KEY` and `CALLUP_NZBGEEK_URL` remain
 available as deployment fallbacks; a saved in-app indexer takes precedence.
-TMDB is a built-in metadata supplier in official Callup builds and requires no
-operator setup. The release build injects Callup's read-only application token
-without committing it to source. `CALLUP_TMDB_ACCESS_TOKEN` remains an optional
-development or emergency override. Local launch scripts load build and runtime
-overrides from the gitignored `.env` file. `CALLUP_CONNECTIONS_PATH` can
-override the connection file location.
+Movie metadata connections use the same provider-neutral settings collection;
+TMDB is the first adapter. Its API Read Access Token is validated before being
+saved server-side and takes effect without a restart. Public release artifacts
+contain no TMDB credential. `CALLUP_TMDB_ACCESS_TOKEN` remains an optional
+deployment override. Local launch scripts load build and runtime overrides from
+the gitignored `.env` file. `CALLUP_CONNECTIONS_PATH` can override the
+connection file location.
 
 In its homelab container, Callup reads the canonical final library roots
 `/data/complete/Television` and `/data/complete/Movies` (never SABnzbd's
