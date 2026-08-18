@@ -53,6 +53,13 @@ continue without reconstructing the product decisions from chat.
   reconciles sending, snatched, downloading, downloaded, and blocked states.
   A lifecycle-managed Swift worker now checks active SABnzbd jobs at startup
   and once per minute; opening Downloads only reads the durable state.
+  A confirmed submission is durable delivery intent, even when SABnzbd is
+  temporarily unreachable. A future delivery worker should retry transient
+  failures with bounded exponential backoff, reconcile before every retry to
+  avoid duplicate SAB jobs after ambiguous failures, and surface permanent or
+  exhausted failures with explicit Retry now and Cancel actions. A user never
+  needs to repeat discovery or confirmation merely because the download host
+  was offline.
   Downloaded episodes render unchecked in their season checklist and are
   therefore omitted from later checked-episode searches.
 - Connection secrets live in an owner-only file beside SQLite, never in SQLite,
