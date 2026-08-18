@@ -31,6 +31,11 @@ public actor ConnectionSettingsStore {
         try persist()
     }
 
+    public func replace(with restoredSettings: ConnectionSettings) throws {
+        settings = restoredSettings
+        try persist()
+    }
+
     private func persist() throws {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(

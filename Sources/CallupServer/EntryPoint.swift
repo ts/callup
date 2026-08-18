@@ -529,6 +529,68 @@ enum CallupServer {
             await connectionResponse(using: connectionSettings)
         }
 
+        application.get("api", "settings", "backup") { request async throws -> Response in
+            let includeConnections = request.query[Bool.self, at: "includeConnections"] == true
+            let backup = try await store.exportBackup(
+                connections: includeConnections ? await connectionSettings.load() : nil
+            )
+            var headers = HTTPHeaders()
+            headers.contentType = .json
+            headers.replaceOrAdd(
+                name: .contentDisposition,
+                value: "attachment; filename=\"callup-backup.json\""
+            )
+            headers.replaceOrAdd(name: .cacheControl, value: "no-store")
+            return try await backup.encodeResponse(status: .ok, headers: headers, for: request)
+        }
+
+        application.on(
+            .POST,
+            "api", "settings", "backup", "restore",
+            body: .collect(maxSize: "10mb")
+        ) {
+            request async throws -> BackupRestoreSummary in
+            guard request.query[Bool.self, at: "confirm"] == true else {
+                throw Abort(
+                    .badRequest,
+                    reason: "Confirm that this backup should replace Callup's current data."
+                )
+            }
+            let backup: CallupBackup
+            do {
+                backup = try request.content.decode(CallupBackup.self)
+            } catch {
+                throw Abort(.badRequest, reason: "That file is not a valid Callup backup.")
+            }
+            let previousConnections = await connectionSettings.load()
+            if let restoredConnections = backup.connections {
+                try await connectionSettings.replace(with: restoredConnections)
+            }
+            do {
+                let summary = try await store.restoreBackup(backup)
+                await library.invalidate()
+                return summary
+            } catch let error as ApplicationStore.StoreError {
+                if backup.connections != nil {
+                    try? await connectionSettings.replace(with: previousConnections)
+                }
+                switch error {
+                case let .unsupportedBackupVersion(version):
+                    throw Abort(
+                        .unprocessableEntity,
+                        reason: "Backup format version \(version) is not supported by this Callup version."
+                    )
+                default:
+                    throw Abort(.unprocessableEntity, reason: "That Callup backup is invalid.")
+                }
+            } catch {
+                if backup.connections != nil {
+                    try? await connectionSettings.replace(with: previousConnections)
+                }
+                throw error
+            }
+        }
+
         application.put("api", "settings", "connections", "indexer") {
             request async throws -> ConnectionSettingsResponse in
             let input = try request.content.decode(SetIndexerConnectionRequest.self)
@@ -1175,6 +1237,8 @@ private struct DownloadSubmissionListResponse: Content {
 }
 
 extension DownloadSubmission: Content {}
+extension CallupBackup: Content {}
+extension BackupRestoreSummary: Content {}
 
 private struct HealthResponse: Content {
     let status: String

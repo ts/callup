@@ -58,11 +58,15 @@ continue without reconstructing the product decisions from chat.
 - Connection secrets live in an owner-only file beside SQLite, never in SQLite,
   source models, logs, or browser responses. A gitignored `.env` supplies
   optional operator and development overrides; Callup does not use Keychain.
+- Settings exports and restores a versioned JSON backup of the Lineup,
+  monitoring overrides, preferences, and download history. Connections are an
+  explicit opt-in because they include credentials; provider caches and the
+  read-only library inventory are rebuilt on the destination.
 - TMDB is a typed, cached movie metadata supplier loaded from a backend-only
   bearer token. Tracking returns after its local write and optimistically
   hydrates detail metadata in the background. Tracked movies expose cached,
   identity-checked, preference-ranked Newznab matches but cannot yet submit one.
-- Sixty-four tests pass.
+- Sixty-seven tests pass.
 - The running `sqlite-cache` build introduces the first application-store slice
   with one explicitly confirmed manual SABnzbd submission seam. No automated
   recommendation queueing, media renaming, or library management exists yet.
@@ -564,6 +568,7 @@ pipeline, then keep importer and final-placement work separate.**
 | 2026-08-11 | Removed per-show and per-season SABnzbd categories | SABnzbd is a transport adapter using stable media categories; final placement belongs to a future modular Callup importer | Full test suite and source search for removed category mutation APIs |
 | 2026-08-11 | Added read-only movie release matching | Tracking optimistically hydrates cached TMDB detail without delaying the local write; matches search Newznab by normalized IMDb identity, reject reported conflicts, and rank the full list using persisted movie preferences | Sixty-three tests and embedded JavaScript syntax check |
 | 2026-08-11 | Added the first manual movie handoff | A selected result is re-verified server-side, fetched without exposing its NZB URL, submitted idempotently to SABnzbd's stable `movies` category, and associated with the tracked movie | Sixty-three tests, including durable generic movie acquisition context; embedded JavaScript syntax check |
+| 2026-08-17 | Added in-app backup and restore | Settings downloads/uploads a versioned logical backup of durable user state; connections require explicit secret inclusion, restore replaces state transactionally, and disposable caches are rebuilt | Sixty-seven tests; embedded JavaScript syntax check; isolated HTTP round-trip of 8 shows, 6 movies, and 57 download records |
 
 ## Reference
 

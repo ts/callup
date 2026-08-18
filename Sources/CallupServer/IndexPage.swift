@@ -61,6 +61,12 @@ let indexHTML = #"""
     .field { display: grid; gap: 6px; color: #b7c4d4; font-size: .9rem; }
     .field-note { color: #738399; font-size: .82rem; }
     .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .backup-panel { display: grid; gap: 13px; margin-top: 14px; padding: 18px; }
+    .backup-panel h3 { margin: 0; }
+    .backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    .backup-choice { display: flex; align-items: center; gap: 9px; color: #b7c4d4; }
+    .backup-file { max-width: 100%; color: #b7c4d4; }
+    .backup-status { min-height: 20px; margin: 0; color: #91a0b3; }
     .series { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; padding: 14px; background: #131b26; border: 1px solid #263244; border-radius: 13px; }
     .poster { width: 72px; height: 102px; object-fit: cover; background: #202b3a; border-radius: 8px; }
     .series-copy { display: grid; gap: 7px; min-width: 0; }
@@ -218,6 +224,23 @@ let indexHTML = #"""
         </div>
       </form>
     </div>
+    <div class="backup-panel connection-form">
+      <div>
+        <h3>Backup and restore</h3>
+        <p class="muted">Move your Lineup, monitoring choices, and download history to another Callup instance.</p>
+      </div>
+      <label class="backup-choice">
+        <input id="backup-include-connections" type="checkbox">
+        Include saved connections and credentials
+      </label>
+      <span class="field-note">Backups with connections contain secrets. Store and share them carefully.</span>
+      <div class="backup-actions">
+        <button id="backup-export" type="button">Export backup</button>
+        <input id="backup-file" class="backup-file" type="file" accept="application/json,.json">
+        <button id="backup-restore" class="secondary" type="button" disabled>Restore backup</button>
+      </div>
+      <p id="backup-status" class="backup-status" role="status"></p>
+    </div>
     <div class="metadata-credits">
       <h3>Metadata sources</h3>
       <p class="muted">TVMaze and TMDB are built in, cached locally, and used automatically.</p>
@@ -331,6 +354,11 @@ const downloadClientSecret = document.querySelector('#download-client-secret');
 const downloadClientSave = document.querySelector('#download-client-save');
 const downloadClientRemove = document.querySelector('#download-client-remove');
 const downloadClientStatus = document.querySelector('#download-client-status');
+const backupIncludeConnections = document.querySelector('#backup-include-connections');
+const backupExport = document.querySelector('#backup-export');
+const backupFile = document.querySelector('#backup-file');
+const backupRestore = document.querySelector('#backup-restore');
+const backupStatus = document.querySelector('#backup-status');
 const runtime = document.querySelector('#runtime');
 const query = document.querySelector('#query');
 const searchButton = document.querySelector('#search-button');
@@ -670,6 +698,92 @@ indexerRemove.addEventListener('click', async () => {
 });
 downloadClientRemove.addEventListener('click', async () => {
   await removeConnection('/api/settings/connections/download-client');
+});
+
+backupFile.addEventListener('change', () => {
+  backupRestore.disabled = backupFile.files.length === 0;
+  backupStatus.textContent = backupFile.files.length
+    ? `Ready to restore ${backupFile.files[0].name}.`
+    : '';
+});
+
+backupExport.addEventListener('click', async () => {
+  setBusy(backupExport, true, 'Exporting…');
+  backupStatus.textContent = '';
+  try {
+    const includeConnections = backupIncludeConnections.checked ? 'true' : 'false';
+    const response = await fetch(`/api/settings/backup?includeConnections=${includeConnections}`);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.reason || 'Callup could not create the backup.');
+    }
+    const blobURL = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = blobURL;
+    link.download = `callup-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobURL);
+    backupStatus.textContent = backupIncludeConnections.checked
+      ? 'Backup exported with saved connections.'
+      : 'Backup exported without saved connections.';
+  } catch (error) {
+    backupStatus.textContent = error.message;
+  } finally {
+    setBusy(backupExport, false, 'Export backup');
+  }
+});
+
+backupRestore.addEventListener('click', async () => {
+  const file = backupFile.files[0];
+  if (!file) return;
+  backupStatus.textContent = '';
+  let text;
+  let backup;
+  try {
+    text = await file.text();
+    backup = JSON.parse(text);
+    if (backup.formatVersion !== 1 || !Array.isArray(backup.television)
+        || !Array.isArray(backup.movies) || !Array.isArray(backup.downloads)) {
+      throw new Error('That file is not a valid Callup backup.');
+    }
+  } catch (error) {
+    backupStatus.textContent = error.message === 'That file is not a valid Callup backup.'
+      ? error.message
+      : 'That file is not valid JSON.';
+    return;
+  }
+
+  const contents = [
+    `${backup.television.length} shows`,
+    `${backup.movies.length} movies`,
+    `${backup.downloads.length} download records`
+  ].join(', ');
+  const connectionNote = backup.connections
+    ? ' It will also replace saved connections and credentials.'
+    : ' Saved connections on this instance will stay unchanged.';
+  if (!window.confirm(
+    `Replace this instance’s Lineup and download history with ${contents}?${connectionNote}`
+  )) return;
+
+  setBusy(backupRestore, true, 'Restoring…');
+  try {
+    const summary = await requestJSON('/api/settings/backup/restore?confirm=true', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: text
+    });
+    backupFile.value = '';
+    backupRestore.disabled = true;
+    await Promise.all([loadTrackedMedia(), loadDownloads(), loadConnections(), loadRuntime()]);
+    backupStatus.textContent = `Restored ${summary.televisionCount} shows, ${summary.movieCount} movies, and ${summary.downloadCount} download records.`;
+  } catch (error) {
+    backupStatus.textContent = error.message;
+  } finally {
+    if (backupFile.files.length) setBusy(backupRestore, false, 'Restore backup');
+    else backupRestore.textContent = 'Restore backup';
+  }
 });
 
 async function removeConnection(url) {

@@ -127,6 +127,13 @@ The default macOS database is
 set `CALLUP_DATABASE_PATH`; it can also override the local path for tests or
 operations.
 
+Settings can export a versioned JSON backup containing the Lineup, television
+monitoring overrides, media preferences, and download history. Saved connections
+are excluded by default and can be included only through an explicit choice,
+because they contain credentials. Restoring requires confirmation and replaces
+the destination's durable product state in one transaction. Provider caches and
+the read-only library inventory are intentionally rebuilt instead of restored.
+
 ## Safety
 
 - Do not commit indexer, metadata-provider, SABnzbd, NZBGet, or existing

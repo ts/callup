@@ -23,6 +23,158 @@ import Testing
     #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
 }
 
+@Test func connectionSettingsCanBeReplacedByARestore() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    let fileURL = directory.appending(path: "connections.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try ConnectionSettingsStore(fileURL: fileURL)
+    let restored = ConnectionSettings(
+        indexer: IndexerConnection(
+            name: "Restored indexer",
+            endpoint: try #require(URL(string: "https://example.invalid/api")),
+            apiKey: "restored-secret"
+        ),
+        downloadClient: DownloadClientConnection(
+            kind: .sabnzbd,
+            endpoint: try #require(URL(string: "http://example.invalid:8080")),
+            secret: "restored-download-secret"
+        )
+    )
+
+    try await store.replace(with: restored)
+
+    let reopened = try ConnectionSettingsStore(fileURL: fileURL)
+    #expect(await reopened.load() == restored)
+}
+
+@Test func backupRoundTripRestoresDurableStateAndDiscardsCaches() async throws {
+    let source = try await ApplicationStore.inMemory()
+    let trackedSeries = series(id: "backup-show", title: "Backup Show")
+    let trackedMovie = fixtureMovie(id: "backup-movie", title: "Backup Movie")
+    let candidateID = ProviderReference(provider: "nzbgeek", value: "backup-release")
+    let episodeID = ProviderReference(provider: "fixture", value: "backup-episode")
+
+    try await source.trackTelevisionSeries(
+        trackedSeries,
+        addedAt: Date(timeIntervalSince1970: 1_000)
+    )
+    try await source.setTelevisionDownloadSettings(
+        seriesID: trackedSeries.id,
+        settings: TelevisionDownloadSettings(
+            seasonFolders: false,
+            preferredResolution: .p2160,
+            preferredVideoCodec: .av1
+        )
+    )
+    try await source.setTelevisionEpisodeIncluded(
+        seriesID: trackedSeries.id,
+        seasonNumber: 1,
+        episodeID: episodeID,
+        seasonEpisodeIDs: [episodeID],
+        included: false
+    )
+    try await source.trackMovie(
+        trackedMovie,
+        addedAt: Date(timeIntervalSince1970: 2_000)
+    )
+    try await source.setMovieDownloadSettings(
+        movieID: trackedMovie.id,
+        settings: MovieDownloadSettings(
+            preferredResolution: .p720,
+            preferredVideoCodec: .avc
+        )
+    )
+    _ = try await source.reserveDownloadSubmission(
+        candidateID: candidateID,
+        title: "Backup Show S01E01",
+        client: .sabnzbd,
+        at: Date(timeIntervalSince1970: 3_000)
+    )
+    _ = try await source.finishDownloadSubmission(
+        candidateID: candidateID,
+        jobID: "restored-job",
+        at: Date(timeIntervalSince1970: 4_000)
+    )
+    _ = try await source.associateDownloadSubmission(
+        candidateID: candidateID,
+        seriesID: trackedSeries.id,
+        episodeIDs: [episodeID],
+        at: Date(timeIntervalSince1970: 5_000)
+    )
+    _ = try await source.updateDownloadSubmissionState(
+        candidateID: candidateID,
+        state: .downloaded,
+        at: Date(timeIntervalSince1970: 6_000)
+    )
+    try await source.putCacheEntry(
+        namespace: "fixture",
+        key: "excluded-from-backup",
+        value: ["disposable"],
+        expiresAt: Date().addingTimeInterval(60)
+    )
+
+    let connections = ConnectionSettings(indexer: IndexerConnection(
+        name: "Backup indexer",
+        endpoint: try #require(URL(string: "https://example.invalid/api")),
+        apiKey: "fixture-secret"
+    ))
+    let backup = try await source.exportBackup(
+        exportedAt: Date(timeIntervalSince1970: 7_000),
+        connections: connections
+    )
+    let encoded = try JSONEncoder().encode(backup)
+    let decoded = try JSONDecoder().decode(CallupBackup.self, from: encoded)
+    #expect(decoded == backup)
+
+    let destination = try await ApplicationStore.inMemory()
+    try await destination.trackMovie(fixtureMovie(id: "old", title: "Old Movie"))
+    try await destination.putCacheEntry(
+        namespace: "fixture",
+        key: "old-cache",
+        value: ["old"],
+        expiresAt: Date().addingTimeInterval(60)
+    )
+    let summary = try await destination.restoreBackup(decoded)
+
+    #expect(summary == BackupRestoreSummary(
+        televisionCount: 1,
+        movieCount: 1,
+        downloadCount: 1,
+        restoredConnections: true
+    ))
+    #expect(try await destination.trackedTelevisionSeries() == backup.television.map(\.tracked))
+    #expect(try await destination.televisionLineup(seriesID: trackedSeries.id) == backup.television[0].lineup)
+    #expect(try await destination.trackedMovies() == backup.movies)
+    #expect(try await destination.downloadSubmissions() == backup.downloads)
+    let cache: ApplicationStore.CacheEntry<[String]>? = try await destination.cacheEntry(
+        namespace: "fixture",
+        key: "old-cache"
+    )
+    #expect(cache == nil)
+
+    try await source.close()
+    try await destination.close()
+}
+
+@Test func invalidBackupDoesNotReplaceExistingState() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let existing = fixtureMovie(id: "existing", title: "Existing Movie")
+    let duplicate = TrackedMovie(movie: fixtureMovie(id: "duplicate", title: "Duplicate"), addedAt: Date())
+    try await store.trackMovie(existing)
+    let backup = CallupBackup(
+        television: [],
+        movies: [duplicate, duplicate],
+        downloads: []
+    )
+
+    await #expect(throws: ApplicationStore.StoreError.invalidBackup) {
+        try await store.restoreBackup(backup)
+    }
+    #expect(try await store.trackedMovies().map(\.movie) == [existing])
+    try await store.close()
+}
+
 @Test func storesOneReplaceableCacheEntry() async throws {
     let store = try await ApplicationStore.inMemory()
     let fetchedAt = Date(timeIntervalSince1970: 1_000)

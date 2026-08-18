@@ -39,6 +39,8 @@ public actor ApplicationStore {
         case malformedCacheEntry
         case seriesNotTracked
         case mediaNotTracked
+        case unsupportedBackupVersion(Int)
+        case invalidBackup
     }
 
     private let connection: SQLiteConnection
@@ -631,6 +633,98 @@ public actor ApplicationStore {
         return submissions
     }
 
+    public func exportBackup(
+        exportedAt: Date = Date(),
+        connections: ConnectionSettings? = nil
+    ) async throws -> CallupBackup {
+        let trackedTelevision = try await trackedTelevisionSeries()
+        var television: [TelevisionBackupItem] = []
+        for tracked in trackedTelevision {
+            television.append(TelevisionBackupItem(
+                tracked: tracked,
+                lineup: try await televisionLineup(seriesID: tracked.series.id)
+            ))
+        }
+        return CallupBackup(
+            exportedAt: exportedAt,
+            television: television,
+            movies: try await trackedMovies(),
+            downloads: try await downloadSubmissions(),
+            connections: connections
+        )
+    }
+
+    @discardableResult
+    public func restoreBackup(_ backup: CallupBackup) async throws -> BackupRestoreSummary {
+        guard backup.formatVersion == CallupBackup.currentFormatVersion else {
+            throw StoreError.unsupportedBackupVersion(backup.formatVersion)
+        }
+        try validateBackup(backup)
+
+        try await transaction {
+            _ = try await connection.query("DELETE FROM download_submissions")
+            _ = try await connection.query("DELETE FROM tracked_media")
+            _ = try await connection.query("DELETE FROM cache_entries")
+
+            for item in backup.television {
+                let series = item.tracked.series
+                let metadata = try encoder.encode(series)
+                let settings = try encoder.encode(item.tracked.downloadSettings)
+                try await insertTrackedMedia(
+                    kind: .televisionSeries,
+                    id: series.id,
+                    title: series.title,
+                    metadata: metadata,
+                    settings: settings,
+                    addedAt: item.tracked.addedAt
+                )
+                try await putTelevisionLineup(item.lineup, seriesID: series.id)
+            }
+
+            for tracked in backup.movies {
+                let movie = tracked.movie
+                try await insertTrackedMedia(
+                    kind: .movie,
+                    id: movie.id,
+                    title: movie.title,
+                    metadata: try encoder.encode(movie),
+                    settings: try encoder.encode(tracked.downloadSettings),
+                    addedAt: tracked.addedAt
+                )
+            }
+
+            for submission in backup.downloads {
+                let acquisition = try submission.acquisitionContext.map(encoder.encode)
+                _ = try await connection.query(
+                    """
+                    INSERT INTO download_submissions (
+                        candidate_provider, candidate_external_id, title, client, state,
+                        client_job_id, acquisition_payload, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        .text(submission.candidateID.provider),
+                        .text(submission.candidateID.value),
+                        .text(submission.title),
+                        .text(submission.client.rawValue),
+                        .text(submission.state.rawValue),
+                        submission.clientJobID.map(SQLiteData.text) ?? .null,
+                        acquisition?.sqliteData ?? .null,
+                        submission.createdAt.sqliteData!,
+                        submission.updatedAt.sqliteData!,
+                    ]
+                )
+            }
+        }
+
+        return BackupRestoreSummary(
+            televisionCount: backup.television.count,
+            movieCount: backup.movies.count,
+            downloadCount: backup.downloads.count,
+            restoredConnections: backup.connections != nil
+        )
+    }
+
     public func close() async throws {
         try await connection.close()
     }
@@ -1063,6 +1157,65 @@ public actor ApplicationStore {
         )
         guard let stored else { throw StoreError.malformedCacheEntry }
         return stored
+    }
+
+    private func insertTrackedMedia(
+        kind: MediaKind,
+        id: ProviderReference,
+        title: String,
+        metadata: Data,
+        settings: Data,
+        addedAt: Date
+    ) async throws {
+        _ = try await connection.query(
+            """
+            INSERT INTO tracked_media (
+                media_kind, provider, external_id, title,
+                metadata_payload, settings_payload, added_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text(kind.rawValue), .text(id.provider), .text(id.value), .text(title),
+                metadata.sqliteData!, settings.sqliteData!, addedAt.sqliteData!,
+            ]
+        )
+    }
+
+    private func validateBackup(_ backup: CallupBackup) throws {
+        var media = Set<MediaReference>()
+        for item in backup.television {
+            let series = item.tracked.series
+            try validate(namespace: series.id.provider, key: series.id.value)
+            for episodeID in item.lineup.excludedEpisodes.union(item.lineup.includedEpisodes) {
+                try validate(namespace: episodeID.provider, key: episodeID.value)
+            }
+            guard !series.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  media.insert(MediaReference(kind: .televisionSeries, id: series.id)).inserted
+            else { throw StoreError.invalidBackup }
+        }
+        for tracked in backup.movies {
+            let movie = tracked.movie
+            try validate(namespace: movie.id.provider, key: movie.id.value)
+            guard !movie.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  media.insert(MediaReference(kind: .movie, id: movie.id)).inserted
+            else { throw StoreError.invalidBackup }
+        }
+        var candidates = Set<ProviderReference>()
+        for submission in backup.downloads {
+            try validate(
+                namespace: submission.candidateID.provider,
+                key: submission.candidateID.value
+            )
+            guard !submission.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  candidates.insert(submission.candidateID).inserted
+            else { throw StoreError.invalidBackup }
+            for target in submission.acquisitionContext?.targets ?? [] {
+                try validate(namespace: target.media.id.provider, key: target.media.id.value)
+                for ancestor in target.ancestors {
+                    try validate(namespace: ancestor.id.provider, key: ancestor.id.value)
+                }
+            }
+        }
     }
 
     private func setTrackedMediaSettings<Settings: Codable & Sendable>(
