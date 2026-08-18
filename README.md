@@ -86,8 +86,10 @@ swift run callup
 
 Open <http://localhost:8484>. The health endpoint is at `/health`.
 
-The interface has bookmarkable top-level views at `/`, `/downloads`, and
-`/settings`. Navigation between them stays inside the live page.
+The interface has bookmarkable top-level views at `/`, `/lineup`,
+`/downloads`, and `/settings`. Navigation between them stays inside the live
+page. Lineup ordering is calculated server-side; `/lineup?sort=nextAiring`,
+`lastDownloaded`, and `title` are supported.
 
 The live app runs as a macOS LaunchAgent independently of an active Codex task.
 [`WORKFLOW.md`](WORKFLOW.md) documents the internals when troubleshooting is
@@ -97,6 +99,7 @@ The current API surface is intentionally small:
 
 - `GET /api/search?q=<title>`
 - `GET /api/tv/search?q=<series>`
+- `GET /api/lineup?sort=nextAiring|lastDownloaded|title`
 - `GET /api/tv/series/<tvmaze-id>/seasons`
 - `GET /api/tv/releases?q=<series>&tvmazeID=<id>&season=<number>`
 - `GET|POST /api/movies/tracked`
