@@ -41,7 +41,7 @@ let indexHTML = #"""
     .search-heading h2 { margin: 0; }
     .view-toggle { display: inline-flex; flex: 0 0 auto; padding: 3px; background: #131b26; border: 1px solid #344258; border-radius: 10px; }
     .view-toggle button { padding: 6px 10px; color: #91a0b3; background: transparent; border-radius: 7px; font-size: .85rem; }
-    .view-toggle button[aria-pressed="true"] { color: #edf2f7; background: #344258; }
+    .view-toggle button[aria-pressed="true"], .view-toggle button[aria-selected="true"] { color: #edf2f7; background: #344258; }
     .tracked-results.list-view { grid-template-columns: 1fr; gap: 0; }
     .tracked-results.list-view .series { grid-template-columns: 1fr; gap: 0; padding: 12px 0; background: transparent; border: 0; border-bottom: 1px solid #263244; border-radius: 0; }
     .tracked-results.list-view .poster { display: none; }
@@ -50,6 +50,7 @@ let indexHTML = #"""
     .connections { padding: 20px 0 4px; }
     .connections-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .connections-heading h2 { margin: 0; }
+    .settings-tabs { margin-bottom: 14px; }
     .utility-panel { padding: 20px 0 4px; }
     .utility-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .utility-heading h2 { margin: 0; }
@@ -175,7 +176,12 @@ let indexHTML = #"""
       </div>
       <a class="ghost" href="/" data-route>Done</a>
     </div>
-    <div class="connection-grid">
+    <div class="view-toggle settings-tabs" role="tablist" aria-label="Settings sections">
+      <button id="settings-configuration-tab" type="button" role="tab" data-settings-tab="configuration" aria-controls="settings-configuration" aria-selected="true">Configuration</button>
+      <button id="settings-data-tab" type="button" role="tab" data-settings-tab="data" aria-controls="settings-data" aria-selected="false">Data</button>
+    </div>
+    <div id="settings-configuration" role="tabpanel" aria-labelledby="settings-configuration-tab" data-settings-panel="configuration">
+      <div class="connection-grid">
       <form id="indexer-form" class="connection-form">
         <div class="connection-title">
           <h3>Search indexer</h3>
@@ -239,8 +245,17 @@ let indexHTML = #"""
           <button id="download-client-remove" class="ghost" type="button" hidden>Remove</button>
         </div>
       </form>
+      </div>
+      <div class="metadata-credits">
+        <h3>Metadata sources</h3>
+        <p class="muted">Callup uses TVMaze and TMDB for metadata and caches results locally.</p>
+        <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" aria-label="The Movie Database">
+          <img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_1-5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4.svg" alt="TMDB">
+        </a>
+        <p class="notice muted">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+      </div>
     </div>
-    <div class="backup-panel connection-form">
+    <div id="settings-data" class="backup-panel connection-form" role="tabpanel" aria-labelledby="settings-data-tab" data-settings-panel="data" hidden>
       <div>
         <h3>Backup and restore</h3>
         <p class="muted">Move your Lineup, monitoring choices, and download history to another Callup instance.</p>
@@ -256,14 +271,6 @@ let indexHTML = #"""
         <button id="backup-restore" class="secondary" type="button" disabled>Restore backup</button>
       </div>
       <p id="backup-status" class="backup-status" role="status"></p>
-    </div>
-    <div class="metadata-credits">
-      <h3>Metadata sources</h3>
-      <p class="muted">Callup uses TVMaze and TMDB for metadata and caches results locally.</p>
-      <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" aria-label="The Movie Database">
-        <img src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_1-5bdc75aaebeb75dc7ae79426ddd9be3b2be1e342510f8202baf6bffa71d7f5c4.svg" alt="TMDB">
-      </a>
-      <p class="notice muted">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
     </div>
   </section>
 
@@ -380,6 +387,8 @@ const backupExport = document.querySelector('#backup-export');
 const backupFile = document.querySelector('#backup-file');
 const backupRestore = document.querySelector('#backup-restore');
 const backupStatus = document.querySelector('#backup-status');
+const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const runtime = document.querySelector('#runtime');
 const query = document.querySelector('#query');
 const searchButton = document.querySelector('#search-button');
@@ -436,6 +445,10 @@ for (const button of searchFilterButtons) {
   button.addEventListener('click', () => setSearchFilter(button.dataset.searchFilter));
 }
 
+for (const button of settingsTabButtons) {
+  button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab));
+}
+
 function loadTrackedView() {
   try {
     return localStorage.getItem('callup.trackedView') || 'cards';
@@ -461,6 +474,17 @@ function setSearchFilter(filter) {
     button.setAttribute('aria-pressed', String(button.dataset.searchFilter === activeSearchFilter));
   }
   renderResults(lastSearchResults);
+}
+
+function setSettingsTab(tab) {
+  const selectedTab = tab === 'data' ? 'data' : 'configuration';
+  for (const button of settingsTabButtons) {
+    const selected = button.dataset.settingsTab === selectedTab;
+    button.setAttribute('aria-selected', String(selected));
+  }
+  for (const panel of settingsPanels) {
+    panel.hidden = panel.dataset.settingsPanel !== selectedTab;
+  }
 }
 
 for (const link of routeLinks) {
