@@ -42,7 +42,7 @@ release, and refuses to overwrite an existing container. Set
 `/data`.
 
 ```bash
-CALLUP_RELEASE=0.1.0-dev.3 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.3/deploy/proxmox-create-lxc.sh)"
+CALLUP_RELEASE=0.1.0-dev.4 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.4/deploy/proxmox-create-lxc.sh)"
 ```
 
 ## Restart the live app
