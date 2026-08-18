@@ -18,6 +18,13 @@ overrides.
 
 Television is the first implementation slice. It is not the product boundary.
 
+## License
+
+Copyright 2026 Tyson Soelberg. Callup is licensed under the GNU Affero General
+Public License, version 3 or later. See [LICENSE](LICENSE).
+
+The Callup name and logo are not licensed for use by derivative products.
+
 ## Install on Linux
 
 Releases contain a prebuilt, static `x86_64` Linux executable. Installation
