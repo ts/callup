@@ -34,7 +34,7 @@ enum CallupServer {
         store: ApplicationStore,
         connectionSettings: ConnectionSettingsStore
     ) {
-        application.http.server.configuration.hostname = "127.0.0.1"
+        application.http.server.configuration.hostname = configuredHost()
         application.http.server.configuration.port = configuredPort()
 
         let metadata = TelevisionMetadataCatalog(
@@ -893,6 +893,12 @@ enum CallupServer {
             return 8484
         }
         return port
+    }
+
+    private static func configuredHost() -> String {
+        let configured = ProcessInfo.processInfo.environment["CALLUP_HOST"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (configured?.isEmpty == false ? configured : nil) ?? "127.0.0.1"
     }
 
     private static func configuredStore() async throws -> ApplicationStore {
