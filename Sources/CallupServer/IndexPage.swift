@@ -75,6 +75,7 @@ let indexHTML = #"""
     .season { margin-top: 16px; background: #131b26; border: 1px solid #263244; border-radius: 13px; overflow: hidden; }
     .season-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #263244; }
     .season-header button { flex: 0 0 auto; padding: 8px 11px; }
+    .season-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .season-choice { display: flex; align-items: center; gap: 10px; }
     .download-settings { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 16px; padding: 14px 16px; background: #131b26; border: 1px solid #263244; border-radius: 13px; }
     .download-settings-copy { display: grid; gap: 4px; }
@@ -1096,11 +1097,20 @@ function renderSeasons(series, items, canChoose) {
     const findReleases = document.createElement('button');
     findReleases.className = 'secondary';
     findReleases.textContent = 'Find releases';
+    const sendSelected = document.createElement('button');
+    sendSelected.type = 'button';
+    sendSelected.dataset.bulkSend = '';
+    sendSelected.hidden = true;
     const releaseResults = document.createElement('div');
     releaseResults.className = 'release-results';
     releaseResults.hidden = true;
-    findReleases.addEventListener('click', () => loadReleases(series, season, section, findReleases, releaseResults));
-    header.append(headerTitle, findReleases);
+    findReleases.addEventListener('click', () =>
+      loadReleases(series, season, section, findReleases, releaseResults, sendSelected)
+    );
+    const actions = document.createElement('div');
+    actions.className = 'season-actions';
+    actions.append(sendSelected, findReleases);
+    header.append(headerTitle, actions);
     section.append(header, releaseResults);
     for (const episode of season.episodes) {
       const row = document.createElement('div');
@@ -1263,6 +1273,7 @@ function preferenceSelect(labelText, options) {
 
 async function setSeasonDesired(series, season, section, checkbox) {
   const desired = checkbox.checked;
+  hideBulkSend(section);
   const episodeInputs = [...section.querySelectorAll('[data-episode-key]')];
   checkbox.disabled = true;
   for (const input of episodeInputs) input.disabled = true;
@@ -1285,6 +1296,7 @@ async function setSeasonDesired(series, season, section, checkbox) {
 
 async function setEpisodeDesired(series, season, section, episode, checkbox) {
   const desired = checkbox.checked;
+  hideBulkSend(section);
   checkbox.disabled = true;
   status.textContent = '';
   try {
@@ -1324,6 +1336,11 @@ function applyLineupState(section, season) {
   seasonCheckbox.indeterminate = selectedCount > 0 && selectedCount < season.episodes.length;
 }
 
+function hideBulkSend(section) {
+  const button = section.querySelector('[data-bulk-send]');
+  if (button) button.hidden = true;
+}
+
 function setLineup(data) {
   episodeMonitoring = data.monitoring || 'all';
   futureCutoffDate = data.futureCutoffDate || null;
@@ -1360,8 +1377,9 @@ function providerKey(reference) {
   return `${reference.provider}:${reference.value}`;
 }
 
-async function loadReleases(series, season, section, button, container) {
+async function loadReleases(series, season, section, button, container, sendSelected) {
   status.textContent = '';
+  sendSelected.hidden = true;
   const checkedEpisodeKeys = new Set(
     [...section.querySelectorAll('[data-episode-key]:checked')]
       .map(input => input.dataset.episodeKey)
@@ -1394,7 +1412,8 @@ async function loadReleases(series, season, section, button, container) {
       container,
       series,
       season,
-      section
+      section,
+      sendSelected
     );
   } catch (error) {
     status.textContent = error.message;
@@ -1480,7 +1499,8 @@ function renderReleases(
   container,
   series,
   season,
-  section
+  section,
+  sendSelected = null
 ) {
   resetReleaseResults(container, section);
   const summary = document.createElement('p');
@@ -1510,7 +1530,34 @@ function renderReleases(
     renderCompactReleaseGroup(target, matches, series);
     target.hidden = false;
   }
+  if (sendSelected) configureBulkSend(sendSelected, candidatesByEpisode, series);
   container.hidden = false;
+}
+
+function configureBulkSend(button, candidatesByEpisode, series) {
+  const releases = new Map();
+  for (const matches of candidatesByEpisode.values()) {
+    const primary = matches[0];
+    if (!primary) continue;
+    const key = providerKey(primary.candidate.id);
+    const current = releases.get(key) || {candidate: primary.candidate, episodeIDs: new Map()};
+    for (const episodeID of primary.episodeIDs) current.episodeIDs.set(providerKey(episodeID), episodeID);
+    releases.set(key, current);
+  }
+  const selected = [...releases.values()].map(release => ({
+    candidate: release.candidate,
+    episodeIDs: [...release.episodeIDs.values()]
+  })).filter(release => {
+    const submission = downloadSubmissions.get(providerKey(release.candidate.id));
+    return !submission || submission.state === 'blocked';
+  });
+  const episodeCount = new Set(selected.flatMap(release =>
+    release.episodeIDs.map(providerKey)
+  )).size;
+  button.hidden = selected.length === 0 || activeDownloadClientKind !== 'sabnzbd';
+  button.disabled = false;
+  button.textContent = `Send ${episodeCount} selected to SABnzbd`;
+  button.onclick = () => sendSelectedToSABnzbd(selected, button, series);
 }
 
 function renderCompactReleaseGroup(container, matches, series) {
@@ -1649,24 +1696,57 @@ async function sendToSABnzbd(candidate, button, series, episodeIDs) {
   setBusy(button, true, 'Sending…');
   status.textContent = '';
   try {
-    const data = await requestJSON('/api/downloads', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({
-        candidateID: candidate.id,
-        seriesID: series.id,
-        episodeIDs
-      })
-    });
-    downloadSubmissions.set(providerKey(candidate.id), data.submission);
-    await rememberDownloadContext(candidate, series, episodeIDs);
-    applyDownloadButtonState(button, data.submission);
+    const submission = await submitToSABnzbd(candidate, series, episodeIDs);
+    applyDownloadButtonState(button, submission);
     await loadDownloads();
   } catch (error) {
     status.textContent = error.message;
     await loadDownloads();
     applyDownloadButtonState(button, downloadSubmissions.get(providerKey(candidate.id)));
   }
+}
+
+async function sendSelectedToSABnzbd(releases, button, series) {
+  const episodeCount = new Set(releases.flatMap(release =>
+    release.episodeIDs.map(providerKey)
+  )).size;
+  if (!window.confirm(
+    `Send ${releases.length} release${releases.length === 1 ? '' : 's'} for ${episodeCount} selected episode${episodeCount === 1 ? '' : 's'} to SABnzbd now?`
+  )) return;
+  setBusy(button, true, 'Sending…');
+  status.textContent = '';
+  const failures = [];
+  for (const release of releases) {
+    try {
+      await submitToSABnzbd(release.candidate, series, release.episodeIDs);
+    } catch (error) {
+      failures.push(error.message);
+    }
+  }
+  await loadDownloads();
+  if (failures.length) {
+    status.textContent = failures.length === releases.length
+      ? failures[0]
+      : `${releases.length - failures.length} sent to SABnzbd; ${failures.length} could not be sent.`;
+  } else {
+    status.textContent = `${releases.length} sent to SABnzbd.`;
+  }
+  button.hidden = true;
+}
+
+async function submitToSABnzbd(candidate, series, episodeIDs) {
+  const data = await requestJSON('/api/downloads', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({
+      candidateID: candidate.id,
+      seriesID: series.id,
+      episodeIDs
+    })
+  });
+  downloadSubmissions.set(providerKey(candidate.id), data.submission);
+  await rememberDownloadContext(candidate, series, episodeIDs);
+  return data.submission;
 }
 
 async function sendMovieToSABnzbd(candidate, button, movie) {
