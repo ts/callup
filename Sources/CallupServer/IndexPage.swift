@@ -51,6 +51,8 @@ let indexHTML = #"""
     .tracked-results.list-view .media-state { grid-area: state; }
     .tracked-results.list-view .library-file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tracked-results.list-view .series-actions { grid-area: actions; flex-wrap: nowrap; justify-content: flex-end; }
+    .inline-movie-releases { grid-column: 1 / -1; padding: 14px; background: #0e151f; border-top: 1px solid #263244; }
+    .inline-movie-releases .release-summary { margin-bottom: 11px; }
     .connections { padding: 20px 0 4px; }
     .connections-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .connections-heading h2 { margin: 0; }
@@ -1199,6 +1201,10 @@ function trackedMovieURL(movie) {
 }
 
 async function openMovieReleases(movie, button) {
+  if (window.location.pathname === '/lineup') {
+    await openInlineMovieReleases(movie, button);
+    return;
+  }
   displayedMovie = movie;
   lineupSection.hidden = true;
   selectedMovieTitle.textContent = `${movie.title} matches`;
@@ -1218,14 +1224,42 @@ async function openMovieReleases(movie, button) {
   }
 }
 
-async function loadMovieReleases(movie) {
+async function openInlineMovieReleases(movie, button) {
+  const card = button.closest('.series');
+  if (!card) return;
+  let panel = card.querySelector('.inline-movie-releases');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'inline-movie-releases';
+    const summary = document.createElement('p');
+    summary.className = 'release-summary';
+    const results = document.createElement('div');
+    results.className = 'candidates';
+    panel.append(summary, results);
+    card.append(panel);
+  }
+  const summary = panel.querySelector('.release-summary');
+  const results = panel.querySelector('.candidates');
+  setBusy(button, true, 'Searching…');
+  status.textContent = '';
+  try {
+    await loadMovieReleases(movie, summary, results);
+  } catch (error) {
+    panel.remove();
+    status.textContent = error.message;
+  } finally {
+    setBusy(button, false, 'Find releases');
+  }
+}
+
+async function loadMovieReleases(movie, summary = movieReleaseSummary, results = movieReleaseResults) {
   const data = await requestJSON(`${trackedMovieURL(movie)}/releases`);
-  movieReleaseResults.replaceChildren();
-  movieReleaseSummary.textContent = data.results.length
+  results.replaceChildren();
+  summary.textContent = data.results.length
     ? `${data.results.length} results, with preferred matches first.`
     : 'No releases were reported for this movie.';
   for (const candidate of data.results) {
-    movieReleaseResults.append(renderCandidate(candidate, null, [], movie));
+    results.append(renderCandidate(candidate, null, [], movie));
   }
 }
 
