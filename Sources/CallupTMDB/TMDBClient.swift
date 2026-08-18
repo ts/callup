@@ -32,9 +32,10 @@ public struct TMDBAccessToken: CustomStringConvertible, Sendable {
 public enum TMDBCredentialResolver {
     public static func resolve(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        configured: String? = nil,
         bundled: String? = BundledTMDBCredential.accessToken
     ) -> TMDBAccessToken? {
-        [environment["CALLUP_TMDB_ACCESS_TOKEN"], bundled]
+        [environment["CALLUP_TMDB_ACCESS_TOKEN"], configured, bundled]
             .compactMap { $0 }
             .compactMap { try? TMDBAccessToken($0) }
             .first
@@ -83,6 +84,10 @@ public actor TMDBClient: MovieMetadataSupplier {
         return try TMDBDecoder.decodeMovie(try await fetch(request))
     }
 
+    public func validateCredential() async throws {
+        _ = try await fetch(TMDBRequestBuilder.authentication(baseURL: baseURL, token: token))
+    }
+
     private func validate(_ movieID: ProviderReference) throws {
         guard movieID.provider == Self.providerName else {
             throw TMDBError.unsupportedProvider(movieID.provider)
@@ -111,6 +116,10 @@ public actor TMDBClient: MovieMetadataSupplier {
 }
 
 enum TMDBRequestBuilder {
+    static func authentication(baseURL: URL, token: TMDBAccessToken) -> URLRequest {
+        request(url: baseURL.appending(path: "authentication"), token: token)
+    }
+
     static func searchMovies(
         baseURL: URL,
         token: TMDBAccessToken,

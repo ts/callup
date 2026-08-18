@@ -31,6 +31,17 @@ public actor ConnectionSettingsStore {
         try persist()
     }
 
+    public func setMetadataProvider(_ connection: MetadataProviderConnection) throws {
+        settings.metadataProviders.removeAll { $0.provider == connection.provider }
+        settings.metadataProviders.append(connection)
+        try persist()
+    }
+
+    public func removeMetadataProvider(_ provider: String) throws {
+        settings.metadataProviders.removeAll { $0.provider == provider }
+        try persist()
+    }
+
     public func replace(with restoredSettings: ConnectionSettings) throws {
         settings = restoredSettings
         try persist()

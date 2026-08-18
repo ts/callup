@@ -197,6 +197,22 @@ let indexHTML = #"""
         </div>
       </form>
 
+      <form id="tmdb-form" class="connection-form">
+        <div class="connection-title">
+          <h3>Movie metadata</h3>
+          <span id="tmdb-status" class="connection-status">Not connected</span>
+        </div>
+        <p class="muted">Callup uses TMDB for movie discovery. A direct connection is the self-hosted fallback while the built-in metadata service is unavailable.</p>
+        <label class="field">API Read Access Token
+          <input id="tmdb-secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved token">
+          <span class="field-note">Validated before saving and stored only on the Callup server.</span>
+        </label>
+        <div class="form-actions">
+          <button id="tmdb-save" type="submit">Connect TMDB</button>
+          <button id="tmdb-remove" class="ghost" type="button" hidden>Remove</button>
+        </div>
+      </form>
+
       <form id="download-client-form" class="connection-form">
         <div class="connection-title">
           <h3>Download client</h3>
@@ -344,6 +360,11 @@ const indexerKey = document.querySelector('#indexer-key');
 const indexerSave = document.querySelector('#indexer-save');
 const indexerRemove = document.querySelector('#indexer-remove');
 const indexerStatus = document.querySelector('#indexer-status');
+const tmdbForm = document.querySelector('#tmdb-form');
+const tmdbSecret = document.querySelector('#tmdb-secret');
+const tmdbSave = document.querySelector('#tmdb-save');
+const tmdbRemove = document.querySelector('#tmdb-remove');
+const tmdbStatus = document.querySelector('#tmdb-status');
 const downloadClientForm = document.querySelector('#download-client-form');
 const downloadClientKind = document.querySelector('#download-client-kind');
 const downloadClientEndpoint = document.querySelector('#download-client-endpoint');
@@ -504,6 +525,16 @@ function renderConnections(data) {
     indexerStatus.textContent = 'Not connected';
     indexerStatus.classList.remove('connected');
     indexerRemove.hidden = true;
+  }
+  const tmdb = (data.metadata || []).find(connection => connection.provider === 'tmdb');
+  if (tmdb) {
+    tmdbStatus.textContent = tmdb.source === 'saved' ? 'Connected' : 'Built in';
+    tmdbStatus.classList.add('connected');
+    tmdbRemove.hidden = tmdb.source !== 'saved';
+  } else {
+    tmdbStatus.textContent = 'Not connected';
+    tmdbStatus.classList.remove('connected');
+    tmdbRemove.hidden = true;
   }
   if (data.downloadClient) {
     activeDownloadClientKind = data.downloadClient.kind;
@@ -667,6 +698,26 @@ indexerForm.addEventListener('submit', async event => {
   }
 });
 
+tmdbForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  setBusy(tmdbSave, true, 'Testing…');
+  status.textContent = '';
+  try {
+    const data = await requestJSON('/api/settings/connections/metadata/tmdb', {
+      method: 'PUT',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({secret: tmdbSecret.value || null})
+    });
+    tmdbSecret.value = '';
+    renderConnections(data);
+    await loadRuntime();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(tmdbSave, false, 'Connect TMDB');
+  }
+});
+
 downloadClientForm.addEventListener('submit', async event => {
   event.preventDefault();
   setBusy(downloadClientSave, true, 'Testing…');
@@ -695,6 +746,9 @@ downloadClientForm.addEventListener('submit', async event => {
 
 indexerRemove.addEventListener('click', async () => {
   await removeConnection('/api/settings/connections/indexer');
+});
+tmdbRemove.addEventListener('click', async () => {
+  await removeConnection('/api/settings/connections/metadata/tmdb');
 });
 downloadClientRemove.addEventListener('click', async () => {
   await removeConnection('/api/settings/connections/download-client');

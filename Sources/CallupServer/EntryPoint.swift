@@ -45,7 +45,10 @@ enum CallupServer {
                 )
             ]
         )
-        let movieMetadata = configuredMovieMetadata(store: store)
+        let movieMetadata = ConfiguredMovieMetadataProvider(
+            store: store,
+            connections: connectionSettings
+        )
         let downloadClientProbe = DownloadClientProbe()
         let sabnzbdClient = SABnzbdClient()
         let library = LibraryInventory()
@@ -102,10 +105,7 @@ enum CallupServer {
                 try await metadata.searchSeries(query: query)
             }
             async let movies = searchResult {
-                guard let movieMetadata else {
-                    throw MovieMetadataConfigurationError.unavailable
-                }
-                return try await movieMetadata.searchMovies(query: query)
+                try await movieMetadata.searchMovies(query: query)
             }
             let (televisionResult, movieResult) = await (television, movies)
             var metadataIssues: [MetadataIssue] = []
@@ -216,13 +216,11 @@ enum CallupServer {
         application.post("api", "movies", "tracked") { request async throws -> TrackedMovie in
             let input = try request.content.decode(TrackMovieRequest.self)
             let tracked = try await store.trackMovie(input.movie)
-            if let movieMetadata {
-                Task {
-                    guard let movie = try? await movieMetadata.movie(for: input.movie.id) else {
-                        return
-                    }
-                    _ = try? await store.updateTrackedMovieMetadata(movie)
+            Task {
+                guard let movie = try? await movieMetadata.movie(for: input.movie.id) else {
+                    return
                 }
+                _ = try? await store.updateTrackedMovieMetadata(movie)
             }
             return tracked
         }
@@ -259,9 +257,6 @@ enum CallupServer {
 
         application.get("api", "movies", "tracked", ":provider", ":id", "releases") {
             request async throws -> ReleaseSearchResponse in
-            guard let movieMetadata else {
-                throw Abort(.serviceUnavailable, reason: "Movie metadata is not configured.")
-            }
             guard let client = await configuredIndexer(using: connectionSettings) else {
                 throw Abort(.serviceUnavailable, reason: "No search indexer is connected.")
             }
@@ -297,7 +292,8 @@ enum CallupServer {
                     )
                 )
             } catch {
-                if error is TMDBError || error is MetadataCatalogError {
+                if error is TMDBError || error is MetadataCatalogError
+                    || error is MovieMetadataConfigurationError {
                     throw movieMetadataAbort(error)
                 }
                 throw indexerAbort(error)
@@ -306,9 +302,6 @@ enum CallupServer {
 
         application.post("api", "movies", "tracked", ":provider", ":id", "downloads") {
             request async throws -> DownloadSubmissionResponse in
-            guard let movieMetadata else {
-                throw Abort(.serviceUnavailable, reason: "Movie metadata is not configured.")
-            }
             guard let downloadConnection = await connectionSettings.load().downloadClient,
                   downloadConnection.kind == .sabnzbd else {
                 throw Abort(.serviceUnavailable, reason: "Connect SABnzbd before sending a release.")
@@ -348,7 +341,8 @@ enum CallupServer {
             } catch let abort as Abort {
                 throw abort
             } catch {
-                if error is TMDBError || error is MetadataCatalogError {
+                if error is TMDBError || error is MetadataCatalogError
+                    || error is MovieMetadataConfigurationError {
                     throw movieMetadataAbort(error)
                 }
                 throw indexerAbort(error)
@@ -617,6 +611,38 @@ enum CallupServer {
             return .noContent
         }
 
+        application.put("api", "settings", "connections", "metadata", ":provider") {
+            request async throws -> ConnectionSettingsResponse in
+            let provider = try request.parameters.require("provider").lowercased()
+            guard provider == TMDBClient.providerName else {
+                throw Abort(.badRequest, reason: "That metadata provider is not supported.")
+            }
+            let input = try request.content.decode(SetMetadataProviderConnectionRequest.self)
+            let saved = await connectionSettings.load().metadataProviders
+                .first { $0.provider == provider }
+            let supplied = input.secret?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value = supplied.flatMap({ $0.isEmpty ? nil : $0 }) ?? saved?.secret,
+                  let token = try? TMDBAccessToken(value) else {
+                throw Abort(.badRequest, reason: "Enter the TMDB API Read Access Token.")
+            }
+            do {
+                try await TMDBClient(token: token).validateCredential()
+            } catch {
+                throw movieMetadataAbort(error)
+            }
+            try await connectionSettings.setMetadataProvider(
+                MetadataProviderConnection(provider: provider, secret: value)
+            )
+            return await connectionResponse(using: connectionSettings)
+        }
+
+        application.delete("api", "settings", "connections", "metadata", ":provider") {
+            request async throws -> HTTPStatus in
+            let provider = try request.parameters.require("provider").lowercased()
+            try await connectionSettings.removeMetadataProvider(provider)
+            return .noContent
+        }
+
         application.put("api", "settings", "connections", "download-client") {
             request async throws -> ConnectionSettingsResponse in
             let input = try request.content.decode(SetDownloadClientConnectionRequest.self)
@@ -786,10 +812,11 @@ enum CallupServer {
         application.get("health") { _ async in
             let indexer = await configuredIndexerConnection(using: connectionSettings)
             let downloader = await connectionSettings.load().downloadClient
+            let tmdbConfigured = await movieMetadata.isConfigured
             return HealthResponse(
                 status: "ok",
                 mode: "tracking",
-                metadata: ["TVmaze"] + (movieMetadata == nil ? [] : ["TMDB"]),
+                metadata: ["TVmaze"] + (tmdbConfigured ? ["TMDB"] : []),
                 indexer: indexer == nil ? "not-configured" : indexer?.name.lowercased() ?? "configured",
                 downloader: downloader?.kind.rawValue ?? "not-configured",
                 database: "sqlite",
@@ -823,6 +850,8 @@ enum CallupServer {
 
     private static func movieMetadataAbort(_ error: Error) -> Abort {
         switch error {
+        case MovieMetadataConfigurationError.unavailable:
+            Abort(.serviceUnavailable, reason: "Connect TMDB in Settings before searching movies.")
         case TMDBError.invalidIdentifier, TMDBError.unsupportedProvider,
              MetadataCatalogError.unsupportedReference:
             Abort(.badRequest, reason: "The movie identifier is invalid.")
@@ -881,20 +910,6 @@ enum CallupServer {
             endpoint: connection.endpoint,
             apiKey: apiKey
         )
-    }
-
-    private static func configuredMovieMetadata(
-        store: ApplicationStore
-    ) -> MovieMetadataCatalog? {
-        guard let token = TMDBCredentialResolver.resolve() else {
-            return nil
-        }
-        return MovieMetadataCatalog(suppliers: [
-            CachedMovieMetadataProvider(
-                upstream: TMDBClient(token: token),
-                store: store
-            )
-        ])
     }
 
     private static func searchResult<Value: Sendable>(
@@ -1027,6 +1042,7 @@ enum CallupServer {
     ) async -> ConnectionSettingsResponse {
         let saved = await settings.load()
         let indexer = await configuredIndexerConnection(using: settings)
+        let movieMetadataSource = await resolvedTMDBCredential(using: settings)?.source
         return ConnectionSettingsResponse(
             indexer: indexer.map {
                 IndexerConnectionResponse(
@@ -1044,7 +1060,15 @@ enum CallupServer {
                     username: $0.username,
                     configured: true
                 )
-            }
+            },
+            metadata: movieMetadataSource.map {
+                [MetadataConnectionResponse(
+                    provider: TMDBClient.providerName,
+                    name: "TMDB",
+                    configured: true,
+                    source: $0
+                )]
+            } ?? []
         )
     }
 
@@ -1090,6 +1114,65 @@ enum CallupServer {
         default:
             Abort(.badGateway, reason: "NZBGeek could not be reached.")
         }
+    }
+}
+
+private struct ResolvedTMDBCredential: Sendable {
+    let token: TMDBAccessToken
+    let source: String
+}
+
+private func resolvedTMDBCredential(
+    using connections: ConnectionSettingsStore
+) async -> ResolvedTMDBCredential? {
+    let environmentValue = ProcessInfo.processInfo.environment["CALLUP_TMDB_ACCESS_TOKEN"]
+    let savedValue = await connections.load().metadataProviders
+        .first { $0.provider == TMDBClient.providerName }?.secret
+    let candidates: [(String?, String)] = [
+        (environmentValue, "environment"),
+        (savedValue, "saved"),
+        (BundledTMDBCredential.accessToken, "bundled"),
+    ]
+    for (value, source) in candidates {
+        if let value, let token = try? TMDBAccessToken(value) {
+            return ResolvedTMDBCredential(token: token, source: source)
+        }
+    }
+    return nil
+}
+
+private struct ConfiguredMovieMetadataProvider: MovieMetadataSupplier {
+    let store: ApplicationStore
+    let connections: ConnectionSettingsStore
+
+    let metadataSupplier = MetadataSupplier(
+        id: TMDBClient.providerName,
+        displayName: "TMDB",
+        supportedMediaKinds: [.movie]
+    )
+
+    var isConfigured: Bool {
+        get async {
+            await resolvedTMDBCredential(using: connections) != nil
+        }
+    }
+
+    func searchMovies(query: String) async throws -> [Movie] {
+        try await provider().searchMovies(query: query)
+    }
+
+    func movie(for movieID: ProviderReference) async throws -> Movie {
+        try await provider().movie(for: movieID)
+    }
+
+    private func provider() async throws -> CachedMovieMetadataProvider {
+        guard let credential = await resolvedTMDBCredential(using: connections) else {
+            throw MovieMetadataConfigurationError.unavailable
+        }
+        return CachedMovieMetadataProvider(
+            upstream: TMDBClient(token: credential.token),
+            store: store
+        )
     }
 }
 
@@ -1204,6 +1287,10 @@ private struct SetDownloadClientConnectionRequest: Content {
     let secret: String?
 }
 
+private struct SetMetadataProviderConnectionRequest: Content {
+    let secret: String?
+}
+
 private struct IndexerConnectionResponse: Content {
     let name: String
     let endpoint: String
@@ -1219,9 +1306,17 @@ private struct DownloadClientConnectionResponse: Content {
     let configured: Bool
 }
 
+private struct MetadataConnectionResponse: Content {
+    let provider: String
+    let name: String
+    let configured: Bool
+    let source: String
+}
+
 private struct ConnectionSettingsResponse: Content {
     let indexer: IndexerConnectionResponse?
     let downloadClient: DownloadClientConnectionResponse?
+    let metadata: [MetadataConnectionResponse]
 }
 
 private struct SubmitDownloadRequest: Content {

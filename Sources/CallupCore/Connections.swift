@@ -43,15 +43,47 @@ public struct DownloadClientConnection: Codable, Equatable, Sendable {
     }
 }
 
+public struct MetadataProviderConnection: Codable, Equatable, Sendable {
+    public let provider: String
+    public let secret: String
+
+    public init(provider: String, secret: String) {
+        self.provider = provider
+        self.secret = secret
+    }
+}
+
 public struct ConnectionSettings: Codable, Equatable, Sendable {
     public var indexer: IndexerConnection?
     public var downloadClient: DownloadClientConnection?
+    public var metadataProviders: [MetadataProviderConnection]
 
     public init(
         indexer: IndexerConnection? = nil,
-        downloadClient: DownloadClientConnection? = nil
+        downloadClient: DownloadClientConnection? = nil,
+        metadataProviders: [MetadataProviderConnection] = []
     ) {
         self.indexer = indexer
         self.downloadClient = downloadClient
+        self.metadataProviders = metadataProviders
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case indexer
+        case downloadClient
+        case metadataProviders
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        indexer = try container.decodeIfPresent(IndexerConnection.self, forKey: .indexer)
+        downloadClient = try container.decodeIfPresent(
+            DownloadClientConnection.self,
+            forKey: .downloadClient
+        )
+        metadataProviders = try container.decodeIfPresent(
+            [MetadataProviderConnection].self,
+            forKey: .metadataProviders
+        ) ?? []
     }
 }

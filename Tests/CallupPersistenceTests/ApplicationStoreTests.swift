@@ -16,11 +16,27 @@ import Testing
     )
 
     try await store.setIndexer(connection)
+    try await store.setMetadataProvider(MetadataProviderConnection(
+        provider: "tmdb",
+        secret: "tmdb-fixture-secret"
+    ))
     let reopened = try ConnectionSettingsStore(fileURL: fileURL)
     let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
 
     #expect(await reopened.load().indexer == connection)
+    #expect(await reopened.load().metadataProviders == [MetadataProviderConnection(
+        provider: "tmdb",
+        secret: "tmdb-fixture-secret"
+    )])
     #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+}
+
+@Test func legacyConnectionSettingsDecodeWithoutMetadataProviders() throws {
+    let legacy = Data(#"{"indexer":null,"downloadClient":null}"#.utf8)
+
+    let decoded = try JSONDecoder().decode(ConnectionSettings.self, from: legacy)
+
+    #expect(decoded == ConnectionSettings())
 }
 
 @Test func connectionSettingsCanBeReplacedByARestore() async throws {
@@ -39,7 +55,11 @@ import Testing
             kind: .sabnzbd,
             endpoint: try #require(URL(string: "http://example.invalid:8080")),
             secret: "restored-download-secret"
-        )
+        ),
+        metadataProviders: [MetadataProviderConnection(
+            provider: "tmdb",
+            secret: "restored-tmdb-secret"
+        )]
     )
 
     try await store.replace(with: restored)

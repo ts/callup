@@ -17,6 +17,21 @@ import Testing
     #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer environment-token")
 }
 
+@Test func configuredTMDBCredentialOverridesTheBundledCredential() throws {
+    let token = try #require(TMDBCredentialResolver.resolve(
+        environment: [:],
+        configured: "configured-token",
+        bundled: "bundled-token"
+    ))
+    let request = TMDBRequestBuilder.authentication(
+        baseURL: try #require(URL(string: "https://api.themoviedb.org/3")),
+        token: token
+    )
+
+    #expect(request.url?.path == "/3/authentication")
+    #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer configured-token")
+}
+
 @Test func bundledTMDBCredentialIsTheAutomaticFallback() {
     #expect(TMDBCredentialResolver.resolve(
         environment: [:],

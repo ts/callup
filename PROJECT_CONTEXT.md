@@ -436,6 +436,11 @@ concepts; its human-facing preference types remain useful.
   share one store and observation boundary while retaining distinct retention
   rules. Start with a single cache table and migration ledger; add explicit
   durable tables only when real product state exists.
+- 2026-08-18 — Treat metadata as a provider collection, not a TMDB-shaped
+  singleton setting. Direct provider credentials are validated, stored
+  server-side, and remain an advanced self-hosted fallback. The intended
+  ordinary-user default is a Callup-operated metadata gateway so installing
+  Callup does not require acquiring third-party API credentials.
 - 2026-08-06 — Run the fast-iteration canonical instance as a macOS LaunchAgent
   bound to loopback. Refresh it from the current coherent tested build so one
   dependable URL always shows the product being developed. Defer Proxmox/systemd
@@ -569,6 +574,7 @@ pipeline, then keep importer and final-placement work separate.**
 | 2026-08-11 | Added read-only movie release matching | Tracking optimistically hydrates cached TMDB detail without delaying the local write; matches search Newznab by normalized IMDb identity, reject reported conflicts, and rank the full list using persisted movie preferences | Sixty-three tests and embedded JavaScript syntax check |
 | 2026-08-11 | Added the first manual movie handoff | A selected result is re-verified server-side, fetched without exposing its NZB URL, submitted idempotently to SABnzbd's stable `movies` category, and associated with the tracked movie | Sixty-three tests, including durable generic movie acquisition context; embedded JavaScript syntax check |
 | 2026-08-17 | Added in-app backup and restore | Settings downloads/uploads a versioned logical backup of durable user state; connections require explicit secret inclusion, restore replaces state transactionally, and disposable caches are rebuilt | Sixty-seven tests; embedded JavaScript syntax check; isolated HTTP round-trip of 8 shows, 6 movies, and 57 download records |
+| 2026-08-18 | Generalized movie metadata connection settings | Metadata providers are a durable collection with provider-neutral routes; TMDB credentials can be validated and saved without entering browser responses, take effect immediately, and remain compatible with older connection files | Seventy-one tests; embedded JavaScript syntax check; isolated no-token-to-live-movie-search HTTP verification |
 
 ## Reference
 
