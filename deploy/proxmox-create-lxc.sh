@@ -21,17 +21,17 @@ if pct status "$CALLUP_CTID" >/dev/null 2>&1; then
 fi
 
 template=$(pveam list "$CALLUP_TEMPLATE_STORAGE" 2>/dev/null \
-  | awk '$1 ~ /debian-13-standard_.*_amd64\\.tar\\.zst$/ { print $1; exit }')
+  | awk '$1 ~ /debian-13-standard_.*_amd64[.]tar[.]zst$/ { print $1; exit }')
 if [ -z "$template" ]; then
   available_template=$(pveam available --section system 2>/dev/null \
-    | awk '$2 ~ /^debian-13-standard_.*_amd64\\.tar\\.zst$/ { print $2; exit }')
+    | awk '$2 ~ /^debian-13-standard_.*_amd64[.]tar[.]zst$/ { print $2; exit }')
   if [ -z "$available_template" ]; then
     echo "No Debian 13 amd64 LXC template is available from this Proxmox host." >&2
     exit 1
   fi
   pveam download "$CALLUP_TEMPLATE_STORAGE" "$available_template"
   template=$(pveam list "$CALLUP_TEMPLATE_STORAGE" 2>/dev/null \
-    | awk '$1 ~ /debian-13-standard_.*_amd64\\.tar\\.zst$/ { print $1; exit }')
+    | awk '$1 ~ /debian-13-standard_.*_amd64[.]tar[.]zst$/ { print $1; exit }')
 fi
 if [ -z "$template" ]; then
   echo "The Debian 13 LXC template download did not appear in $CALLUP_TEMPLATE_STORAGE." >&2
