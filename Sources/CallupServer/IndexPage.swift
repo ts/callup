@@ -9,7 +9,7 @@ let indexHTML = #"""
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
     * { box-sizing: border-box; }
     body { margin: 0; background: #0b1017; color: #edf2f7; }
-    main { max-width: 980px; margin: 0 auto; padding: 52px 22px 80px; }
+    main { max-width: 1240px; margin: 0 auto; padding: 52px 22px 80px; }
     h1 { font-size: clamp(2.7rem, 7vw, 5rem); letter-spacing: -.055em; margin: 8px 0 4px; }
     h2 { margin-top: 36px; }
     h3, p { margin: 0; }
@@ -107,13 +107,15 @@ let indexHTML = #"""
     .download-settings-choice { display: flex; align-items: center; gap: 10px; color: #edf2f7; font-weight: 720; }
     .download-preferences { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; min-width: min(100%, 460px); }
     .download-preferences .field { font-size: .82rem; }
-    .episode { display: grid; grid-template-columns: 74px minmax(160px, .7fr) minmax(270px, 1.3fr) minmax(0, 2fr) auto; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid #202b3a; }
-    .episode.selectable { grid-template-columns: 18px 74px minmax(160px, .7fr) minmax(270px, 1.3fr) minmax(0, 2fr) auto; }
+    .episode { display: grid; grid-template-columns: 74px minmax(180px, 1fr) 96px minmax(0, .9fr) minmax(160px, .9fr) auto; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid #202b3a; }
+    .episode.selectable { grid-template-columns: 18px 74px minmax(180px, 1fr) 96px minmax(0, .9fr) minmax(160px, .9fr) auto; }
     .episode:last-child { border-bottom: 0; }
     .episode.has-download { background: #12251a; }
     .episode-download-state { display: inline-block; margin-left: 8px; padding: 3px 8px; border-radius: 999px; color: #c8f8d0; background: #276b38; font-size: .78rem; font-weight: 750; }
     .episode-code { color: #64d67c; font-variant-numeric: tabular-nums; }
     .episode-title, .episode-library-traits, .episode .meta { min-width: 0; }
+    .episode-state { display: flex; align-items: center; min-width: 0; }
+    .episode-state .episode-download-state { margin-left: 0; }
     .episode-library-traits { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
     .episode .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .episode-search { padding: 6px 9px; }
@@ -174,17 +176,17 @@ let indexHTML = #"""
       .lineup-controls { justify-content: flex-start; }
       .tracked-results.list-view .series-copy { grid-template-columns: 1fr; grid-template-areas: "heading" "meta" "state" "actions"; gap: 6px; }
       .tracked-results.list-view .series-actions { justify-content: flex-start; margin-top: 3px; }
-      .episode { grid-template-columns: 66px minmax(0, 1fr); gap: 8px; }
-      .episode.selectable { grid-template-columns: 18px 66px minmax(0, 1fr); }
+      .episode { grid-template-columns: 66px minmax(0, 1fr) 80px; gap: 8px; }
+      .episode.selectable { grid-template-columns: 18px 66px minmax(0, 1fr) 80px; }
       .episode-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
       .episode-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .episode-download-state { flex: 0 0 auto; margin-left: 0; padding: 2px 6px; font-size: .72rem; }
-      .episode .meta { grid-column: 2; }
-      .episode.selectable .meta { grid-column: 3; }
-      .episode .episode-library-traits { grid-column: 2; }
-      .episode.selectable .episode-library-traits { grid-column: 3; }
-      .episode .episode-search { grid-column: 2; justify-self: start; }
-      .episode.selectable .episode-search { grid-column: 3; }
+      .episode .episode-state { grid-column: 3; grid-row: 1; }
+      .episode.selectable .episode-state { grid-column: 4; }
+      .episode .meta, .episode .episode-library-traits { grid-column: 2 / -1; }
+      .episode.selectable .meta, .episode.selectable .episode-library-traits { grid-column: 3 / -1; }
+      .episode .episode-search { grid-column: 2 / -1; justify-self: start; }
+      .episode.selectable .episode-search { grid-column: 3 / -1; }
       .episode-releases { padding-left: 16px; }
       .download-settings { align-items: stretch; flex-direction: column; }
       .download-preferences { min-width: 0; }
@@ -875,7 +877,7 @@ function applyEpisodeDownloadStates(items) {
     const badge = document.createElement('span');
     badge.className = 'episode-download-state';
     badge.textContent = downloadStateLabel(episodeState);
-    row.querySelector('.episode-title').append(badge);
+    row.querySelector('.episode-state').append(badge);
   }
   for (const section of document.querySelectorAll('.season')) {
     const seasonCheckbox = section.querySelector('[data-season-choice]');
@@ -1646,6 +1648,8 @@ function renderSeasons(series, items, canChoose) {
       titleText.className = 'episode-title-text';
       titleText.textContent = episode.title;
       title.append(titleText);
+      const episodeState = document.createElement('span');
+      episodeState.className = 'episode-state';
       const libraryTraits = document.createElement('div');
       libraryTraits.className = 'episode-library-traits';
       const meta = document.createElement('span');
@@ -1655,7 +1659,7 @@ function renderSeasons(series, items, canChoose) {
       episodeReleases.className = 'episode-releases';
       episodeReleases.dataset.releaseEpisodeNumber = episode.episodeNumber == null ? '' : String(episode.episodeNumber);
       episodeReleases.hidden = true;
-      row.append(code, title, libraryTraits, meta);
+      row.append(code, title, episodeState, libraryTraits, meta);
       if (episode.episodeNumber != null) {
         const searchEpisode = document.createElement('button');
         searchEpisode.type = 'button';
