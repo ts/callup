@@ -335,10 +335,13 @@ lineup policy because tracking a series and wanting its episode leaves are
 distinct intentions. Download submissions store one shared acquisition context
 instead of television-only series and episode columns.
 
-`Policy` is the useful version of profile administration: named, understandable
-preferences with defaults, optional media-specific fields, and per-request
-overrides. Each search stores an immutable policy snapshot so changing a profile
-later cannot silently change the explanation for an existing recommendation.
+Quality is a sparse cascading preference, not profile administration. Television
+inherits from its global default through show, season, and episode; movies use a
+separate global default with an optional title override. The nearest explicit
+value wins. Each acquisition stores the effective preference and the layer that
+supplied it, so later changes cannot rewrite the explanation for existing work.
+Automatic quality upgrades may use those snapshots later, but are not part of
+the initial acquisition loop.
 
 ## Candidate decision model
 
@@ -602,6 +605,7 @@ pipeline, then keep importer and final-placement work separate.**
 | 2026-08-11 | Added the first manual movie handoff | A selected result is re-verified server-side, fetched without exposing its NZB URL, submitted idempotently to SABnzbd's stable `movies` category, and associated with the tracked movie | Sixty-three tests, including durable generic movie acquisition context; embedded JavaScript syntax check |
 | 2026-08-17 | Added in-app backup and restore | Settings downloads/uploads a versioned logical backup of durable user state; connections require explicit secret inclusion, restore replaces state transactionally, and disposable caches are rebuilt | Sixty-seven tests; embedded JavaScript syntax check; isolated HTTP round-trip of 8 shows, 6 movies, and 57 download records |
 | 2026-08-18 | Generalized movie metadata connection settings | Metadata providers are a durable collection with provider-neutral routes; TMDB credentials can be validated and saved without entering browser responses, take effect immediately, and remain compatible with older connection files | Seventy-one tests; embedded JavaScript syntax check; isolated no-token-to-live-movie-search HTTP verification |
+| 2026-08-19 | Added cascading quality preferences | Television defaults cascade through show, season, and episode overrides; movies have a separate default and title override; release ranking resolves the nearest layer and acquisitions retain immutable preference/source snapshots | Eighty tests; backup round-trip; embedded JavaScript syntax check |
 
 ## Reference
 

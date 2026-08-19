@@ -710,6 +710,94 @@ import Testing
     try await store.close()
 }
 
+@Test func qualityPreferencesCascadeFromDefaultsThroughEveryTelevisionLayer() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let seriesID = ProviderReference(provider: "tvmaze", value: "123")
+    let episodeID = ProviderReference(provider: "tvmaze", value: "456")
+    let series = MediaReference(kind: .televisionSeries, id: seriesID)
+    let season = MediaReference.televisionSeason(seriesID: seriesID, number: 2)
+    let episode = MediaReference(kind: .televisionEpisode, id: episodeID)
+    let seasonPreference = VideoQualityPreference(
+        preferredResolution: .p2160,
+        preferredVideoCodec: .av1
+    )
+    let episodePreference = VideoQualityPreference(
+        preferredResolution: .p720,
+        preferredVideoCodec: .avc
+    )
+    let televisionDefault = VideoQualityPreference(
+        preferredResolution: .p1080,
+        preferredVideoCodec: .hevc
+    )
+    let movieDefault = VideoQualityPreference(
+        preferredResolution: .p2160,
+        preferredVideoCodec: .av1
+    )
+    try await store.setQualityDefaults(QualityDefaults(
+        television: televisionDefault,
+        movies: movieDefault
+    ))
+
+    #expect(try await store.effectiveQuality(for: episode, ancestors: [season, series]) ==
+        AcquisitionPreferenceSnapshot(target: episode, preference: televisionDefault, source: nil))
+    let movie = MediaReference(
+        kind: .movie,
+        id: ProviderReference(provider: "tmdb", value: "789")
+    )
+    #expect(try await store.effectiveQuality(for: movie, ancestors: []) ==
+        AcquisitionPreferenceSnapshot(target: movie, preference: movieDefault, source: nil))
+    try await store.setQualityOverride(seasonPreference, for: season)
+    #expect(try await store.effectiveQuality(for: episode, ancestors: [season, series]) ==
+        AcquisitionPreferenceSnapshot(target: episode, preference: seasonPreference, source: season))
+    try await store.setQualityOverride(episodePreference, for: episode)
+    #expect(try await store.effectiveQuality(for: episode, ancestors: [season, series]) ==
+        AcquisitionPreferenceSnapshot(target: episode, preference: episodePreference, source: episode))
+    try await store.setQualityOverride(nil, for: episode)
+    #expect(try await store.effectiveQuality(for: episode, ancestors: [season, series])?.source == season)
+    try await store.close()
+}
+
+@Test func acquisitionKeepsTheQualityPreferenceThatWasEffectiveWhenAssociated() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let seriesID = ProviderReference(provider: "tvmaze", value: "123")
+    let episode = TelevisionEpisode(
+        id: ProviderReference(provider: "tvmaze", value: "456"),
+        seriesID: seriesID,
+        seasonNumber: 2,
+        episodeNumber: 1,
+        title: "Episode",
+        airDate: nil,
+        runtimeMinutes: nil
+    )
+    let series = MediaReference(kind: .televisionSeries, id: seriesID)
+    let original = VideoQualityPreference(
+        preferredResolution: .p2160,
+        preferredVideoCodec: .hevc
+    )
+    try await store.setQualityOverride(original, for: series)
+    let candidateID = ProviderReference(provider: "nzbgeek", value: "snapshot")
+    _ = try await store.reserveDownloadSubmission(
+        candidateID: candidateID,
+        title: "Show S02E01",
+        client: .sabnzbd
+    )
+    let associated = try await store.associateDownloadSubmission(
+        candidateID: candidateID,
+        seriesID: seriesID,
+        episodes: [episode]
+    )
+    try await store.setQualityOverride(
+        VideoQualityPreference(preferredResolution: .p720, preferredVideoCodec: .avc),
+        for: series
+    )
+
+    #expect(associated.preferenceSnapshot?.first?.preference == original)
+    #expect(associated.preferenceSnapshot?.first?.source == series)
+    #expect(try await store.downloadSubmission(candidateID: candidateID)?
+        .preferenceSnapshot?.first?.preference == original)
+    try await store.close()
+}
+
 @Test func queuedDownloadCannotBeSubmittedAgainAfterReopen() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "callup-download-\(UUID().uuidString)", directoryHint: .isDirectory)

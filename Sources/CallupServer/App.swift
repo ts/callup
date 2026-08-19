@@ -583,11 +583,25 @@ struct SetTelevisionDownloadSettingsRequest: Content {
     let preferredVideoCodec: TelevisionVideoCodecPreference
 }
 
+struct ResolveQualityRequest: Content {
+    let target: MediaReference
+    let ancestors: [MediaReference]
+}
+
+struct SetQualityOverrideRequest: Content {
+    let media: MediaReference
+    let preference: VideoQualityPreference?
+}
+
 extension TrackedTelevisionSeries: Content {}
 extension TrackedMovie: Content {}
 extension MovieDownloadSettings: Content {}
 extension TelevisionLineup: Content {}
 extension TelevisionDownloadSettings: Content {}
+extension QualityDefaults: Content {}
+extension VideoQualityPreference: Content {}
+extension AcquisitionPreferenceSnapshot: Content {}
+extension MediaReference: Content {}
 extension LibraryFileDetails: Content {}
 
 func localDateString(_ date: Date = Date()) -> String {

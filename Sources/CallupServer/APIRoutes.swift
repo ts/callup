@@ -225,13 +225,21 @@ extension CallupServer {
             )
             let input = try request.content.decode(SetMovieDownloadSettingsRequest.self)
             do {
-                return try await store.setMovieDownloadSettings(
+                let settings = try await store.setMovieDownloadSettings(
                     movieID: movieID,
                     settings: MovieDownloadSettings(
                         preferredResolution: input.preferredResolution,
                         preferredVideoCodec: input.preferredVideoCodec
                     )
                 )
+                try await store.setQualityOverride(
+                    VideoQualityPreference(
+                        preferredResolution: input.preferredResolution,
+                        preferredVideoCodec: input.preferredVideoCodec
+                    ),
+                    for: MediaReference(kind: .movie, id: movieID)
+                )
+                return settings
             } catch ApplicationStore.StoreError.mediaNotTracked {
                 throw Abort(.notFound, reason: "That movie is not tracked.")
             }
@@ -252,7 +260,7 @@ extension CallupServer {
 
             do {
                 let movie = try await movieMetadata.movie(for: movieID)
-                let tracked = try await store.trackMovie(movie)
+                _ = try await store.trackMovie(movie)
                 let indexer = CachedMovieReleaseIndexer(upstream: client, store: store)
                 let page = try await indexer.searchMovies(
                     query: movie.title,
@@ -265,12 +273,15 @@ extension CallupServer {
                         requireReportedIdentity: false
                     )
                 }
+                let settings = try await store.effectiveQuality(
+                    for: MediaReference(kind: .movie, id: movieID), ancestors: []
+                )?.preference ?? VideoQualityPreference()
                 return ReleaseSearchResponse(
                     offset: page.offset,
                     total: candidates.count,
                     results: ReleasePreferenceRanker.sorted(
                         candidates,
-                        settings: tracked.downloadSettings
+                        settings: settings
                     )
                 )
             } catch {
@@ -493,11 +504,14 @@ extension CallupServer {
                     season: request.query[Int.self, at: "season"],
                     episode: request.query[Int.self, at: "episode"]
                 )
-                let settings = try await store.trackedTelevisionSeries(id: seriesID)?.downloadSettings
-                    ?? TelevisionDownloadSettings(
-                        preferredResolution: .any,
-                        preferredVideoCodec: .any
-                    )
+                let qualityScope = televisionQualityScope(for: request, seriesID: seriesID)
+                let settings = try await store.effectiveQuality(
+                    for: qualityScope.target,
+                    ancestors: qualityScope.ancestors
+                )?.preference ?? VideoQualityPreference(
+                    preferredResolution: .any,
+                    preferredVideoCodec: .any
+                )
                 return ReleaseSearchResponse(
                     offset: page.offset,
                     total: page.total,
@@ -511,6 +525,34 @@ extension CallupServer {
 
         application.get("api", "settings", "connections") { _ async -> ConnectionSettingsResponse in
             await connectionResponse(using: connectionSettings)
+        }
+
+        application.get("api", "quality") { _ async throws -> QualityDefaults in
+            try await store.qualityDefaults()
+        }
+
+        application.put("api", "quality") { request async throws -> QualityDefaults in
+            let defaults = try request.content.decode(QualityDefaults.self)
+            try await store.setQualityDefaults(defaults)
+            return defaults
+        }
+
+        application.post("api", "quality", "resolve") {
+            request async throws -> AcquisitionPreferenceSnapshot in
+            let input = try request.content.decode(ResolveQualityRequest.self)
+            guard let resolved = try await store.effectiveQuality(
+                for: input.target,
+                ancestors: input.ancestors
+            ) else {
+                throw Abort(.badRequest, reason: "That media kind does not use video quality.")
+            }
+            return resolved
+        }
+
+        application.put("api", "quality", "override") { request async throws -> HTTPStatus in
+            let input = try request.content.decode(SetQualityOverrideRequest.self)
+            try await store.setQualityOverride(input.preference, for: input.media)
+            return .noContent
         }
 
         application.get("api", "settings", "update") { request async -> CallupUpdateStatus in
@@ -856,6 +898,30 @@ extension CallupServer {
             )
         }
     }
+}
+
+private func televisionQualityScope(
+    for request: Request,
+    seriesID: ProviderReference
+) -> (target: MediaReference, ancestors: [MediaReference]) {
+    let series = MediaReference(kind: .televisionSeries, id: seriesID)
+    guard let seasonNumber = request.query[Int.self, at: "season"] else {
+        return (series, [])
+    }
+    let season = MediaReference.televisionSeason(seriesID: seriesID, number: seasonNumber)
+    guard
+        let episodeProvider = request.query[String.self, at: "episodeProvider"],
+        let episodeID = request.query[String.self, at: "episodeID"]
+    else {
+        return (season, [series])
+    }
+    return (
+        MediaReference(
+            kind: .televisionEpisode,
+            id: ProviderReference(provider: episodeProvider, value: episodeID)
+        ),
+        [season, series]
+    )
 }
 
 private func downloadActivityGroups(

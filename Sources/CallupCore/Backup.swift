@@ -8,6 +8,8 @@ public struct CallupBackup: Codable, Equatable, Sendable {
     public let television: [TelevisionBackupItem]
     public let movies: [TrackedMovie]
     public let downloads: [DownloadSubmission]
+    public let qualityDefaults: QualityDefaults?
+    public let qualityOverrides: [QualityOverride]?
     public let connections: ConnectionSettings?
 
     public init(
@@ -16,6 +18,8 @@ public struct CallupBackup: Codable, Equatable, Sendable {
         television: [TelevisionBackupItem],
         movies: [TrackedMovie],
         downloads: [DownloadSubmission],
+        qualityDefaults: QualityDefaults? = nil,
+        qualityOverrides: [QualityOverride]? = nil,
         connections: ConnectionSettings? = nil
     ) {
         self.formatVersion = formatVersion
@@ -23,6 +27,8 @@ public struct CallupBackup: Codable, Equatable, Sendable {
         self.television = television
         self.movies = movies
         self.downloads = downloads
+        self.qualityDefaults = qualityDefaults
+        self.qualityOverrides = qualityOverrides
         self.connections = connections
     }
 }

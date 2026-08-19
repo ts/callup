@@ -194,6 +194,116 @@ public actor ApplicationStore {
         )
     }
 
+    public func qualityDefaults() async throws -> QualityDefaults {
+        let rows = try await connection.query("SELECT payload FROM quality_defaults WHERE id = 1")
+        guard let payload = rows.first?.column("payload").flatMap(Data.init(sqliteData:)) else {
+            return QualityDefaults()
+        }
+        return try decoder.decode(QualityDefaults.self, from: payload)
+    }
+
+    public func setQualityDefaults(_ defaults: QualityDefaults) async throws {
+        let payload = try encoder.encode(defaults)
+        _ = try await connection.query(
+            """
+            INSERT INTO quality_defaults (id, payload) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET payload = excluded.payload
+            """,
+            [payload.sqliteData!]
+        )
+    }
+
+    public func setQualityOverride(
+        _ preference: VideoQualityPreference?,
+        for media: MediaReference
+    ) async throws {
+        try validate(namespace: media.id.provider, key: media.id.value)
+        let ordinal = media.ordinal ?? -1
+        if let preference {
+            let payload = try encoder.encode(preference)
+            _ = try await connection.query(
+                """
+                INSERT INTO quality_overrides (
+                    media_kind, provider, external_id, ordinal, payload
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT DO UPDATE SET payload = excluded.payload
+                """,
+                [
+                    .text(media.kind.rawValue), .text(media.id.provider), .text(media.id.value),
+                    ordinal.sqliteData!, payload.sqliteData!,
+                ]
+            )
+        } else {
+            _ = try await connection.query(
+                """
+                DELETE FROM quality_overrides
+                WHERE media_kind = ? AND provider = ? AND external_id = ? AND ordinal = ?
+                """,
+                [
+                    .text(media.kind.rawValue), .text(media.id.provider), .text(media.id.value),
+                    ordinal.sqliteData!,
+                ]
+            )
+        }
+    }
+
+    public func qualityOverrides() async throws -> [QualityOverride] {
+        let rows = try await connection.query(
+            """
+            SELECT media_kind, provider, external_id, ordinal, payload
+            FROM quality_overrides ORDER BY media_kind, provider, external_id, ordinal
+            """
+        )
+        return try rows.map { row in
+            guard
+                let rawKind = row.column("media_kind").flatMap(String.init(sqliteData:)),
+                let kind = MediaKind(rawValue: rawKind),
+                let provider = row.column("provider").flatMap(String.init(sqliteData:)),
+                let identifier = row.column("external_id").flatMap(String.init(sqliteData:)),
+                let storedOrdinal = row.column("ordinal").flatMap(Int.init(sqliteData:)),
+                let payload = row.column("payload").flatMap(Data.init(sqliteData:))
+            else { throw StoreError.malformedCacheEntry }
+            return QualityOverride(
+                media: MediaReference(
+                    kind: kind,
+                    id: ProviderReference(provider: provider, value: identifier),
+                    ordinal: storedOrdinal == -1 ? nil : storedOrdinal
+                ),
+                preference: try decoder.decode(VideoQualityPreference.self, from: payload)
+            )
+        }
+    }
+
+    public func effectiveQuality(
+        for target: MediaReference,
+        ancestors: [MediaReference]
+    ) async throws -> AcquisitionPreferenceSnapshot? {
+        for reference in [target] + ancestors {
+            let ordinal = reference.ordinal ?? -1
+            let rows = try await connection.query(
+                """
+                SELECT payload FROM quality_overrides
+                WHERE media_kind = ? AND provider = ? AND external_id = ? AND ordinal = ?
+                """,
+                [
+                    .text(reference.kind.rawValue), .text(reference.id.provider),
+                    .text(reference.id.value), ordinal.sqliteData!,
+                ]
+            )
+            if let payload = rows.first?.column("payload").flatMap(Data.init(sqliteData:)) {
+                return AcquisitionPreferenceSnapshot(
+                    target: target,
+                    preference: try decoder.decode(VideoQualityPreference.self, from: payload),
+                    source: reference
+                )
+            }
+        }
+        guard let preference = try await qualityDefaults().preference(for: target.kind) else {
+            return nil
+        }
+        return AcquisitionPreferenceSnapshot(target: target, preference: preference, source: nil)
+    }
+
     public func trackedTelevisionSeries() async throws -> [TrackedTelevisionSeries] {
         let stored: [StoredTrackedMedia<TelevisionSeries, TelevisionDownloadSettings>] =
             try await trackedMedia(kind: .televisionSeries)
@@ -431,6 +541,7 @@ public actor ApplicationStore {
         let rows = try await connection.query(
             """
             SELECT title, client, state, client_job_id, acquisition_payload,
+                   preference_snapshot_payload,
                    created_at, updated_at
             FROM download_submissions
             WHERE candidate_provider = ? AND candidate_external_id = ?
@@ -452,9 +563,13 @@ public actor ApplicationStore {
         let acquisitionContext = try row.column("acquisition_payload")
             .flatMap(Data.init(sqliteData:))
             .map { try decoder.decode(AcquisitionContext.self, from: $0) }
+        let preferenceSnapshot = try row.column("preference_snapshot_payload")
+            .flatMap(Data.init(sqliteData:))
+            .map { try decoder.decode([AcquisitionPreferenceSnapshot].self, from: $0) }
         return DownloadSubmission(
             candidateID: candidateID,
             acquisitionContext: acquisitionContext,
+            preferenceSnapshot: preferenceSnapshot,
             title: title,
             client: client,
             state: state,
@@ -606,14 +721,21 @@ public actor ApplicationStore {
             }
         }
         let acquisitionPayload = try encoder.encode(acquisitionContext)
+        var snapshots: [AcquisitionPreferenceSnapshot] = []
+        for target in acquisitionContext.targets {
+            if let snapshot = try await effectiveQuality(for: target.media, ancestors: target.ancestors) {
+                snapshots.append(snapshot)
+            }
+        }
+        let snapshotPayload = try encoder.encode(snapshots)
         _ = try await connection.query(
             """
             UPDATE download_submissions
-            SET acquisition_payload = ?, updated_at = ?
+            SET acquisition_payload = ?, preference_snapshot_payload = ?, updated_at = ?
             WHERE candidate_provider = ? AND candidate_external_id = ?
             """,
             [
-                acquisitionPayload.sqliteData!, date.sqliteData!,
+                acquisitionPayload.sqliteData!, snapshotPayload.sqliteData!, date.sqliteData!,
                 .text(candidateID.provider), .text(candidateID.value),
             ]
         )
@@ -663,6 +785,8 @@ public actor ApplicationStore {
             television: television,
             movies: try await trackedMovies(),
             downloads: try await downloadSubmissions(),
+            qualityDefaults: try await qualityDefaults(),
+            qualityOverrides: try await qualityOverrides(),
             connections: connections
         )
     }
@@ -678,6 +802,15 @@ public actor ApplicationStore {
             _ = try await connection.query("DELETE FROM download_submissions")
             _ = try await connection.query("DELETE FROM tracked_media")
             _ = try await connection.query("DELETE FROM cache_entries")
+            _ = try await connection.query("DELETE FROM quality_defaults")
+            _ = try await connection.query("DELETE FROM quality_overrides")
+
+            if let defaults = backup.qualityDefaults {
+                try await setQualityDefaults(defaults)
+            }
+            for override in backup.qualityOverrides ?? [] {
+                try await setQualityOverride(override.preference, for: override.media)
+            }
 
             for item in backup.television {
                 let series = item.tracked.series
@@ -708,12 +841,14 @@ public actor ApplicationStore {
 
             for submission in backup.downloads {
                 let acquisition = try submission.acquisitionContext.map(encoder.encode)
+                let preferenceSnapshot = try submission.preferenceSnapshot.map(encoder.encode)
                 _ = try await connection.query(
                     """
                     INSERT INTO download_submissions (
                         candidate_provider, candidate_external_id, title, client, state,
-                        client_job_id, acquisition_payload, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        client_job_id, acquisition_payload, preference_snapshot_payload,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         .text(submission.candidateID.provider),
@@ -723,6 +858,7 @@ public actor ApplicationStore {
                         .text(submission.state.rawValue),
                         submission.clientJobID.map(SQLiteData.text) ?? .null,
                         acquisition?.sqliteData ?? .null,
+                        preferenceSnapshot?.sqliteData ?? .null,
                         submission.createdAt.sqliteData!,
                         submission.updatedAt.sqliteData!,
                     ]
@@ -1058,6 +1194,40 @@ public actor ApplicationStore {
                 _ = try await connection.query("DROP TABLE download_submissions")
                 _ = try await connection.query(
                     "ALTER TABLE download_submissions_next RENAME TO download_submissions"
+                )
+            }
+        }
+
+        let versionElevenRows = try await connection.query(
+            "SELECT version FROM schema_migrations WHERE version = 11"
+        )
+        if versionElevenRows.isEmpty {
+            try await migrate(version: 11) {
+                _ = try await connection.query(
+                    """
+                    CREATE TABLE quality_defaults (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        payload BLOB NOT NULL
+                    )
+                    """
+                )
+                _ = try await connection.query(
+                    """
+                    CREATE TABLE quality_overrides (
+                        media_kind TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        ordinal INTEGER NOT NULL,
+                        payload BLOB NOT NULL,
+                        PRIMARY KEY (media_kind, provider, external_id, ordinal)
+                    ) WITHOUT ROWID
+                    """
+                )
+                _ = try await connection.query(
+                    """
+                    ALTER TABLE download_submissions
+                    ADD COLUMN preference_snapshot_payload BLOB
+                    """
                 )
             }
         }

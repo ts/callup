@@ -11,6 +11,7 @@ public enum DownloadSubmissionState: String, Codable, Sendable {
 public struct DownloadSubmission: Codable, Equatable, Sendable {
     public let candidateID: ProviderReference
     public let acquisitionContext: AcquisitionContext?
+    public let preferenceSnapshot: [AcquisitionPreferenceSnapshot]?
     public let title: String
     public let client: DownloadClientKind
     public let state: DownloadSubmissionState
@@ -21,6 +22,7 @@ public struct DownloadSubmission: Codable, Equatable, Sendable {
     public init(
         candidateID: ProviderReference,
         acquisitionContext: AcquisitionContext? = nil,
+        preferenceSnapshot: [AcquisitionPreferenceSnapshot]? = nil,
         title: String,
         client: DownloadClientKind,
         state: DownloadSubmissionState,
@@ -30,6 +32,7 @@ public struct DownloadSubmission: Codable, Equatable, Sendable {
     ) {
         self.candidateID = candidateID
         self.acquisitionContext = acquisitionContext
+        self.preferenceSnapshot = preferenceSnapshot
         self.title = title
         self.client = client
         self.state = state

@@ -88,6 +88,18 @@ let indexHTML = #"""
     .update-status.failed { color: #f0b95b; }
     .update-detail { margin: 0; }
     .update-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    .quality-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .quality-card { display: grid; gap: 13px; padding: 18px; }
+    .quality-card h3 { margin: 0; }
+    .quality-card-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .quality-summary { min-height: 20px; color: #91a0b3; }
+    .quality-override { position: relative; }
+    .quality-override > summary { cursor: pointer; color: #b7c4d4; font-size: .82rem; font-weight: 720; list-style: none; }
+    .quality-override > summary::-webkit-details-marker { display: none; }
+    .quality-override-panel { position: absolute; z-index: 5; top: calc(100% + 7px); right: 0; display: grid; gap: 9px; width: 280px; padding: 12px; background: #172131; border: 1px solid #344258; border-radius: 10px; box-shadow: 0 10px 30px #05080dbf; }
+    .quality-override-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .quality-override-actions { display: flex; justify-content: flex-end; gap: 7px; }
+    .quality-override-actions button { padding: 7px 9px; }
     .series { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; padding: 14px; background: #131b26; border: 1px solid #263244; border-radius: 13px; }
     .poster { width: 72px; height: 102px; object-fit: cover; background: #202b3a; border-radius: 8px; }
     .series-copy { display: grid; gap: 7px; min-width: 0; }
@@ -173,6 +185,7 @@ let indexHTML = #"""
     @media (max-width: 600px) {
       .search-form { flex-direction: column; }
       .connection-grid { grid-template-columns: 1fr; }
+      .quality-grid, .quality-card-fields { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; }
       #lineup-page > .utility-heading { align-items: stretch; flex-direction: column; }
       .lineup-controls { justify-content: flex-start; }
@@ -206,6 +219,7 @@ let indexHTML = #"""
     <nav class="topbar-actions" aria-label="Primary">
       <a href="/" data-route>Home</a>
       <a href="/lineup" data-route>Lineup</a>
+      <a href="/quality" data-route>Quality</a>
       <a href="/downloads" data-route>Downloads</a>
       <a href="/settings" data-route>Settings</a>
     </nav>
@@ -345,6 +359,60 @@ let indexHTML = #"""
     <div id="download-results" class="download-list"></div>
   </section>
 
+  <section id="quality-section" class="utility-panel" data-view="quality" hidden>
+    <div class="utility-heading">
+      <div>
+        <h2>Quality</h2>
+        <p class="muted">Simple defaults that each title inherits until you change it.</p>
+      </div>
+      <a class="ghost" href="/lineup" data-route>Done</a>
+    </div>
+    <div class="quality-grid">
+      <form class="quality-card" data-quality-default="television">
+        <h3>Television default</h3>
+        <p class="quality-summary"></p>
+        <div class="quality-card-fields">
+          <label class="field">Resolution
+            <select data-quality-resolution>
+              <option value="2160p">2160p</option><option value="1080p">1080p</option>
+              <option value="720p">720p</option><option value="480p">480p</option>
+              <option value="any">Any</option>
+            </select>
+          </label>
+          <label class="field">Video codec
+            <select data-quality-codec>
+              <option value="HEVC">HEVC</option><option value="AVC">AVC</option>
+              <option value="AV1">AV1</option><option value="MPEG-2">MPEG-2</option>
+              <option value="any">Any</option>
+            </select>
+          </label>
+        </div>
+        <div><button type="submit">Save TV default</button></div>
+      </form>
+      <form class="quality-card" data-quality-default="movies">
+        <h3>Movie default</h3>
+        <p class="quality-summary"></p>
+        <div class="quality-card-fields">
+          <label class="field">Resolution
+            <select data-quality-resolution>
+              <option value="2160p">2160p</option><option value="1080p">1080p</option>
+              <option value="720p">720p</option><option value="480p">480p</option>
+              <option value="any">Any</option>
+            </select>
+          </label>
+          <label class="field">Video codec
+            <select data-quality-codec>
+              <option value="HEVC">HEVC</option><option value="AVC">AVC</option>
+              <option value="AV1">AV1</option><option value="MPEG-2">MPEG-2</option>
+              <option value="any">Any</option>
+            </select>
+          </label>
+        </div>
+        <div><button type="submit">Save movie default</button></div>
+      </form>
+    </div>
+  </section>
+
   <div id="home-view" data-view="home" hidden>
     <form id="search-form" class="search-form">
       <input id="query" name="q" type="search" placeholder="Search for a show or movie" autocomplete="off" required>
@@ -390,6 +458,7 @@ let indexHTML = #"""
               <option value="MPEG-2">MPEG-2</option>
             </select>
           </label>
+          <button id="movie-quality-inherit" class="ghost" type="button">Use movie default</button>
         </div>
       </div>
       <p id="movie-release-summary" class="release-summary"></p>
@@ -491,8 +560,10 @@ const movieReleaseSection = document.querySelector('#movie-release-section');
 const selectedMovieTitle = document.querySelector('#selected-movie-title');
 const movieResolution = document.querySelector('#movie-resolution');
 const movieCodec = document.querySelector('#movie-codec');
+const movieQualityInherit = document.querySelector('#movie-quality-inherit');
 const movieReleaseSummary = document.querySelector('#movie-release-summary');
 const movieReleaseResults = document.querySelector('#movie-release-results');
+const qualityForms = document.querySelectorAll('[data-quality-default]');
 const lineupSection = document.querySelector('#lineup-section');
 const lineupPage = document.querySelector('#lineup-page');
 const selectedTitle = document.querySelector('#selected-title');
@@ -520,6 +591,7 @@ let updatePollAttempts = 0;
 const downloadSubmissions = new Map();
 let onDiskEpisodeKeys = new Set();
 const onDiskEpisodeFiles = new Map();
+let qualityDefaults = null;
 
 setTrackedView(loadTrackedView());
 renderRoute();
@@ -528,6 +600,7 @@ loadTrackedMedia();
 loadConnections();
 loadUpdates();
 loadDownloads();
+loadQuality();
 
 lineupSort.addEventListener('change', () => {
   const url = new URL(window.location.href);
@@ -717,6 +790,7 @@ function renderRoute() {
   const route = window.location.pathname === '/settings'
     ? 'settings'
     : window.location.pathname === '/downloads' ? 'downloads'
+    : window.location.pathname === '/quality' ? 'quality'
     : window.location.pathname === '/lineup' ? 'lineup' : 'home';
   const requestedSort = new URLSearchParams(window.location.search).get('sort');
   const requestedKind = new URLSearchParams(window.location.search).get('kind');
@@ -734,6 +808,62 @@ function renderRoute() {
   }
   document.title = route === 'home' ? 'Callup' : `${route[0].toUpperCase()}${route.slice(1)} · Callup`;
   status.textContent = '';
+}
+
+function qualitySummary(preference) {
+  const resolution = preference.preferredResolution === 'any'
+    ? 'any resolution'
+    : preference.preferredResolution;
+  const codec = preference.preferredVideoCodec === 'any'
+    ? 'any video codec'
+    : preference.preferredVideoCodec;
+  return `Prefer ${resolution} and ${codec}.`;
+}
+
+function renderQualityDefaults() {
+  if (!qualityDefaults) return;
+  for (const form of qualityForms) {
+    const preference = qualityDefaults[form.dataset.qualityDefault];
+    form.querySelector('[data-quality-resolution]').value = preference.preferredResolution;
+    form.querySelector('[data-quality-codec]').value = preference.preferredVideoCodec;
+    form.querySelector('.quality-summary').textContent = qualitySummary(preference);
+  }
+}
+
+async function loadQuality() {
+  try {
+    qualityDefaults = await requestJSON('/api/quality');
+    renderQualityDefaults();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+for (const form of qualityForms) {
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    const key = form.dataset.qualityDefault;
+    setBusy(button, true, 'Saving…');
+    status.textContent = '';
+    try {
+      qualityDefaults[key] = {
+        preferredResolution: form.querySelector('[data-quality-resolution]').value,
+        preferredVideoCodec: form.querySelector('[data-quality-codec]').value
+      };
+      qualityDefaults = await requestJSON('/api/quality', {
+        method: 'PUT',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(qualityDefaults)
+      });
+      renderQualityDefaults();
+    } catch (error) {
+      status.textContent = error.message;
+      await loadQuality();
+    } finally {
+      setBusy(button, false, key === 'television' ? 'Save TV default' : 'Save movie default');
+    }
+  });
 }
 
 downloadClientKind.addEventListener('change', applyDownloadClientKind);
@@ -1242,6 +1372,11 @@ function renderResults(items) {
       matches.addEventListener('click', () => openMovieReleases(media, matches));
       actions.append(matches);
     }
+    actions.append(qualityOverrideControl(
+      isTelevision ? 'Show quality' : 'Movie quality',
+      {kind: isTelevision ? 'televisionSeries' : 'movie', id: media.id},
+      []
+    ));
     const track = document.createElement('button');
     track.textContent = isTracked ? 'Remove' : 'Add';
     if (isTracked) track.className = 'secondary';
@@ -1449,13 +1584,14 @@ async function openMovieReleases(movie, button) {
   displayedMovie = movie;
   lineupSection.hidden = true;
   selectedMovieTitle.textContent = `${movie.title} matches`;
-  const tracked = trackedMovies.get(providerKey(movie.id));
-  movieResolution.value = tracked?.downloadSettings?.preferredResolution || '1080p';
-  movieCodec.value = tracked?.downloadSettings?.preferredVideoCodec || 'HEVC';
   movieReleaseSection.hidden = false;
   setBusy(button, true, 'Searching…');
   status.textContent = '';
   try {
+    const resolved = await resolveQuality({kind: 'movie', id: movie.id}, []);
+    movieResolution.value = resolved.preference.preferredResolution;
+    movieCodec.value = resolved.preference.preferredVideoCodec;
+    movieQualityInherit.hidden = !resolved.source;
     await loadMovieReleases(movie);
     movieReleaseSection.scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (error) {
@@ -1528,6 +1664,24 @@ async function saveMoviePreferences() {
     movieCodec.disabled = false;
   }
 }
+
+movieQualityInherit.addEventListener('click', async () => {
+  if (!displayedMovie) return;
+  setBusy(movieQualityInherit, true, 'Restoring…');
+  status.textContent = '';
+  try {
+    await setQualityOverride({kind: 'movie', id: displayedMovie.id}, null);
+    const resolved = await resolveQuality({kind: 'movie', id: displayedMovie.id}, []);
+    movieResolution.value = resolved.preference.preferredResolution;
+    movieCodec.value = resolved.preference.preferredVideoCodec;
+    movieQualityInherit.hidden = true;
+    await loadMovieReleases(displayedMovie);
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    setBusy(movieQualityInherit, false, 'Use movie default');
+  }
+});
 
 movieResolution.addEventListener('change', saveMoviePreferences);
 movieCodec.addEventListener('change', saveMoviePreferences);
@@ -1634,7 +1788,15 @@ function renderSeasons(series, items, canChoose, scrollToPanel = true) {
     );
     const actions = document.createElement('div');
     actions.className = 'season-actions';
-    actions.append(sendSelected, findReleases);
+    const seriesReference = {kind: 'televisionSeries', id: series.id};
+    const seasonReference = {
+      kind: 'televisionSeason', id: series.id, ordinal: season.number
+    };
+    actions.append(
+      qualityOverrideControl('Season quality', seasonReference, [seriesReference]),
+      sendSelected,
+      findReleases
+    );
     header.append(headerTitle, actions);
     section.append(header, releaseResults);
     for (const episode of season.episodes) {
@@ -1663,6 +1825,14 @@ function renderSeasons(series, items, canChoose, scrollToPanel = true) {
       titleText.className = 'episode-title-text';
       titleText.textContent = episode.title;
       title.append(titleText);
+      title.append(qualityOverrideControl(
+        'Episode quality',
+        {kind: 'televisionEpisode', id: episode.id},
+        [
+          {kind: 'televisionSeason', id: series.id, ordinal: season.number},
+          {kind: 'televisionSeries', id: series.id}
+        ]
+      ));
       const episodeState = document.createElement('span');
       episodeState.className = 'episode-state';
       const libraryTraits = document.createElement('div');
@@ -1714,16 +1884,10 @@ function renderDownloadSettings(series) {
   checkbox.type = 'checkbox';
   const preferences = document.createElement('div');
   preferences.className = 'download-preferences';
-  const resolution = preferenceSelect('Resolution', [
-    ['any', 'Any'], ['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p']
-  ]);
-  const codec = preferenceSelect('Video codec', [
-    ['any', 'Any'], ['HEVC', 'HEVC'], ['AVC', 'AVC'], ['AV1', 'AV1'], ['MPEG-2', 'MPEG-2']
-  ]);
   const monitoring = preferenceSelect('Episodes', [
     ['future', 'Future'], ['all', 'All'], ['none', 'None']
   ]);
-  preferences.append(monitoring.field, resolution.field, codec.field);
+  preferences.append(monitoring.field);
   const label = document.createElement('span');
   label.textContent = 'Use season folders';
   choice.append(checkbox, label);
@@ -1736,14 +1900,12 @@ function renderDownloadSettings(series) {
   };
   const applySettings = settings => {
     checkbox.checked = settings?.seasonFolders !== false;
-    resolution.select.value = settings?.preferredResolution || '1080p';
-    codec.select.value = settings?.preferredVideoCodec || 'HEVC';
     monitoring.select.value = episodeMonitoring;
     updateNote();
   };
   applySettings(tracked?.downloadSettings);
   const saveSettings = async () => {
-    const controls = [checkbox, resolution.select, codec.select];
+    const controls = [checkbox];
     for (const control of controls) control.disabled = true;
     status.textContent = '';
     updateNote();
@@ -1753,8 +1915,8 @@ function renderDownloadSettings(series) {
         headers: {'content-type': 'application/json'},
         body: JSON.stringify({
           seasonFolders: checkbox.checked,
-          preferredResolution: resolution.select.value,
-          preferredVideoCodec: codec.select.value
+          preferredResolution: tracked?.downloadSettings?.preferredResolution || '1080p',
+          preferredVideoCodec: tracked?.downloadSettings?.preferredVideoCodec || 'HEVC'
         })
       });
       const item = trackedSeries.get(seriesKey(series));
@@ -1767,8 +1929,6 @@ function renderDownloadSettings(series) {
     }
   };
   checkbox.addEventListener('change', saveSettings);
-  resolution.select.addEventListener('change', saveSettings);
-  codec.select.addEventListener('change', saveSettings);
   monitoring.select.addEventListener('change', async () => {
     monitoring.select.disabled = true;
     status.textContent = '';
@@ -1801,6 +1961,115 @@ function preferenceSelect(labelText, options) {
   }
   field.append(select);
   return {field, select};
+}
+
+function sameMediaReference(left, right) {
+  return Boolean(left && right)
+    && left.kind === right.kind
+    && left.id.provider === right.id.provider
+    && left.id.value === right.id.value
+    && (left.ordinal ?? null) === (right.ordinal ?? null);
+}
+
+function qualitySourceLabel(source) {
+  if (!source) return 'global default';
+  if (source.kind === 'televisionSeries') return 'show';
+  if (source.kind === 'televisionSeason') return 'season';
+  if (source.kind === 'televisionEpisode') return 'episode';
+  return 'title';
+}
+
+async function resolveQuality(target, ancestors) {
+  return requestJSON('/api/quality/resolve', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({target, ancestors})
+  });
+}
+
+async function setQualityOverride(media, preference) {
+  await requestJSON('/api/quality/override', {
+    method: 'PUT',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({media, preference})
+  });
+}
+
+function qualityOverrideControl(label, media, ancestors) {
+  const details = document.createElement('details');
+  details.className = 'quality-override';
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const panel = document.createElement('div');
+  panel.className = 'quality-override-panel';
+  const note = document.createElement('span');
+  note.className = 'field-note';
+  note.textContent = 'Loading…';
+  const fields = document.createElement('div');
+  fields.className = 'quality-override-fields';
+  const resolution = preferenceSelect('Resolution', [
+    ['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['any', 'Any']
+  ]);
+  const codec = preferenceSelect('Video codec', [
+    ['HEVC', 'HEVC'], ['AVC', 'AVC'], ['AV1', 'AV1'], ['MPEG-2', 'MPEG-2'], ['any', 'Any']
+  ]);
+  fields.append(resolution.field, codec.field);
+  const actions = document.createElement('div');
+  actions.className = 'quality-override-actions';
+  const inherit = document.createElement('button');
+  inherit.type = 'button';
+  inherit.className = 'ghost';
+  inherit.textContent = 'Use inherited';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.textContent = 'Save override';
+  actions.append(inherit, save);
+  panel.append(note, fields, actions);
+  details.append(summary, panel);
+  let loaded = false;
+
+  const load = async () => {
+    const resolved = await resolveQuality(media, ancestors);
+    resolution.select.value = resolved.preference.preferredResolution;
+    codec.select.value = resolved.preference.preferredVideoCodec;
+    const custom = sameMediaReference(resolved.source, media);
+    summary.textContent = `${label} · ${custom ? 'custom' : 'inherited'}`;
+    note.textContent = custom
+      ? qualitySummary(resolved.preference)
+      : `${qualitySummary(resolved.preference)} Inherited from ${qualitySourceLabel(resolved.source)}.`;
+    inherit.hidden = !custom;
+    loaded = true;
+  };
+  details.addEventListener('toggle', async () => {
+    if (!details.open || loaded) return;
+    try { await load(); } catch (error) { status.textContent = error.message; }
+  });
+  save.addEventListener('click', async () => {
+    setBusy(save, true, 'Saving…');
+    try {
+      await setQualityOverride(media, {
+        preferredResolution: resolution.select.value,
+        preferredVideoCodec: codec.select.value
+      });
+      await load();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      setBusy(save, false, 'Save override');
+    }
+  });
+  inherit.addEventListener('click', async () => {
+    setBusy(inherit, true, 'Restoring…');
+    try {
+      await setQualityOverride(media, null);
+      await load();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      setBusy(inherit, false, 'Use inherited');
+    }
+  });
+  return details;
 }
 
 async function setSeasonDesired(series, season, section, checkbox) {
@@ -1986,6 +2255,11 @@ async function searchEpisodeReleases(series, season, episodes) {
     tvmazeID: series.id.value,
     season: String(season.number)
   });
+  if (episodes.length === 1 && episodes[0].episodeNumber != null) {
+    parameters.set('episode', String(episodes[0].episodeNumber));
+    parameters.set('episodeProvider', episodes[0].id.provider);
+    parameters.set('episodeID', episodes[0].id.value);
+  }
   const data = await requestJSON(`/api/tv/releases?${parameters}`);
   const selectedEpisodeNumbers = new Set(episodes.map(episode => episode.episodeNumber));
   const matchedEpisodes = new Map();
