@@ -12,11 +12,12 @@ continue without reconstructing the product decisions from chat.
 
 ### Current executable state
 
-- Vapor service executable: `callup`, listening on `127.0.0.1:8484`.
-- The canonical local instance is a macOS LaunchAgent showing the latest
-  coherent tested build at one dependable URL. It survives Codex tasks and
-  restarts independently; `/health` identifies its branch and revision.
-  Committing or merging is not a prerequisite for browser review.
+- Vapor service executable: `callup`, distributed as a static Linux release
+  and running in the canonical homelab LXC at `http://10.69.42.18:8484`.
+- The LXC release is the sole review and handoff path. Do not use or offer a
+  local macOS instance: Callup is being made distributable for other users,
+  who do not share the owner’s computer. `/health` identifies the installed
+  release and revision.
 - Browser UI performs one mixed TVMaze show and TMDB movie search and persists
   shows and movies in one minimal tracked view. It labels each tracked show as
   ended or with its next announced air date and displays seasons and episodes.
