@@ -674,7 +674,15 @@ extension CallupServer {
         }
 
         application.get("api", "downloads") { _ async throws -> DownloadSubmissionListResponse in
-            DownloadSubmissionListResponse(results: try await store.downloadSubmissions())
+            let submissions = try await store.downloadSubmissions()
+            return DownloadSubmissionListResponse(
+                results: submissions,
+                groups: await downloadActivityGroups(
+                    for: submissions,
+                    store: store,
+                    metadata: metadata
+                )
+            )
         }
 
         application.post("api", "downloads") { request async throws -> DownloadSubmissionResponse in
@@ -758,7 +766,7 @@ extension CallupServer {
                     let associated = try await store.associateDownloadSubmission(
                         candidateID: input.candidateID,
                         seriesID: input.seriesID,
-                        episodeIDs: input.episodeIDs
+                        episodes: episodes
                     )
                     return DownloadSubmissionResponse(
                         submission: associated,
@@ -787,10 +795,22 @@ extension CallupServer {
             guard try await store.downloadSubmission(candidateID: candidateID) != nil else {
                 throw Abort(.notFound, reason: "That download is not known to Callup.")
             }
+            let episodes: [TelevisionEpisode]
+            do {
+                let requested = Set(input.episodeIDs)
+                episodes = try await metadata.episodes(for: input.seriesID).filter {
+                    requested.contains($0.id)
+                }
+            } catch {
+                throw metadataAbort(error)
+            }
+            guard episodes.count == Set(input.episodeIDs).count else {
+                throw Abort(.badRequest, reason: "The download context must use known episodes.")
+            }
             return try await store.associateDownloadSubmission(
                 candidateID: candidateID,
                 seriesID: input.seriesID,
-                episodeIDs: input.episodeIDs
+                episodes: episodes
             )
         }
 
@@ -809,4 +829,94 @@ extension CallupServer {
             )
         }
     }
+}
+
+private func downloadActivityGroups(
+    for submissions: [DownloadSubmission],
+    store: ApplicationStore,
+    metadata: TelevisionMetadataCatalog
+) async -> [DownloadActivityGroup] {
+    var cachedEpisodes: [ProviderReference: [TelevisionEpisode]] = [:]
+    var groups: [String: DownloadActivityGroup] = [:]
+    var order: [String] = []
+
+    for submission in submissions {
+        let group = await downloadActivityGroup(
+            for: submission,
+            store: store,
+            metadata: metadata,
+            cachedEpisodes: &cachedEpisodes
+        ) ?? DownloadActivityGroup(
+            id: "release:\(submission.candidateID.provider):\(submission.candidateID.value)",
+            title: "Other downloads",
+            detail: nil,
+            results: []
+        )
+
+        if var existing = groups[group.id] {
+            existing = DownloadActivityGroup(
+                id: existing.id,
+                title: existing.title,
+                detail: existing.detail,
+                results: existing.results + [submission]
+            )
+            groups[group.id] = existing
+        } else {
+            groups[group.id] = DownloadActivityGroup(
+                id: group.id,
+                title: group.title,
+                detail: group.detail,
+                results: [submission]
+            )
+            order.append(group.id)
+        }
+    }
+
+    return order.compactMap { groups[$0] }
+}
+
+private func downloadActivityGroup(
+    for submission: DownloadSubmission,
+    store: ApplicationStore,
+    metadata: TelevisionMetadataCatalog,
+    cachedEpisodes: inout [ProviderReference: [TelevisionEpisode]]
+) async -> DownloadActivityGroup? {
+    guard let context = submission.acquisitionContext else { return nil }
+    let episodeTargets = context.targets.filter { $0.media.kind == .televisionEpisode }
+    guard !episodeTargets.isEmpty,
+          episodeTargets.count == context.targets.count,
+          let seriesID = context.televisionSeriesID else {
+        return nil
+    }
+
+    let season: Int
+    if let persistedSeason = context.televisionSeasonNumber {
+        season = persistedSeason
+    } else {
+        let episodes: [TelevisionEpisode]
+        if let cached = cachedEpisodes[seriesID] {
+            episodes = cached
+        } else if let fetched = try? await metadata.episodes(for: seriesID) {
+            cachedEpisodes[seriesID] = fetched
+            episodes = fetched
+        } else {
+            return nil
+        }
+        let seasonNumbers = Set(episodeTargets.compactMap { target in
+            episodes.first(where: { $0.id == target.media.id })?.seasonNumber
+        })
+        guard seasonNumbers.count == 1, let legacySeason = seasonNumbers.first else { return nil }
+        season = legacySeason
+    }
+
+    guard let series = try? await store.trackedTelevisionSeries(id: seriesID)?.series else {
+        return nil
+    }
+
+    return DownloadActivityGroup(
+        id: "television:\(seriesID.provider):\(seriesID.value):season:\(season)",
+        title: series.title,
+        detail: "Season \(season)",
+        results: []
+    )
 }

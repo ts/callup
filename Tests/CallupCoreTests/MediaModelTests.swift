@@ -27,6 +27,27 @@ import Testing
             ancestors: [MediaReference(kind: .movieCollection, id: collectionID)]
         )
     ])
+
+    let episode = TelevisionEpisode(
+        id: episodeID,
+        seriesID: seriesID,
+        seasonNumber: 2,
+        episodeNumber: 3,
+        title: "Episode",
+        airDate: nil,
+        runtimeMinutes: nil
+    )
+    let hierarchicalTelevision = AcquisitionContext.television(seriesID: seriesID, episodes: [episode])
+    #expect(hierarchicalTelevision.targets == [
+        AcquisitionTarget(
+            media: MediaReference(kind: .televisionEpisode, id: episodeID),
+            ancestors: [
+                .televisionSeason(seriesID: seriesID, number: 2),
+                MediaReference(kind: .televisionSeries, id: seriesID),
+            ]
+        )
+    ])
+    #expect(hierarchicalTelevision.televisionSeasonNumber == 2)
 }
 
 @Test func televisionAndMoviePreferencesRankTheSameCandidateTraits() {

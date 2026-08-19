@@ -582,6 +582,19 @@ public actor ApplicationStore {
 
     public func associateDownloadSubmission(
         candidateID: ProviderReference,
+        seriesID: ProviderReference,
+        episodes: [TelevisionEpisode],
+        at date: Date = Date()
+    ) async throws -> DownloadSubmission {
+        try await associateDownloadSubmission(
+            candidateID: candidateID,
+            acquisitionContext: .television(seriesID: seriesID, episodes: episodes),
+            at: date
+        )
+    }
+
+    public func associateDownloadSubmission(
+        candidateID: ProviderReference,
         acquisitionContext: AcquisitionContext,
         at date: Date = Date()
     ) async throws -> DownloadSubmission {

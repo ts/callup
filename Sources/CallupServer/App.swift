@@ -669,6 +669,14 @@ struct DownloadSubmissionResponse: Content {
 
 struct DownloadSubmissionListResponse: Content {
     let results: [DownloadSubmission]
+    let groups: [DownloadActivityGroup]
+}
+
+struct DownloadActivityGroup: Content {
+    let id: String
+    let title: String
+    let detail: String?
+    let results: [DownloadSubmission]
 }
 
 extension DownloadSubmission: Content {}

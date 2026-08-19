@@ -677,6 +677,39 @@ import Testing
     try await store.close()
 }
 
+@Test func downloadSubmissionPersistsTelevisionSeasonAsAnAncestor() async throws {
+    let store = try await ApplicationStore.inMemory()
+    let candidateID = ProviderReference(provider: "nzbgeek", value: "season-context")
+    let seriesID = ProviderReference(provider: "tvmaze", value: "123")
+    let episode = TelevisionEpisode(
+        id: ProviderReference(provider: "tvmaze", value: "456"),
+        seriesID: seriesID,
+        seasonNumber: 2,
+        episodeNumber: 1,
+        title: "Episode",
+        airDate: nil,
+        runtimeMinutes: nil
+    )
+    _ = try await store.reserveDownloadSubmission(
+        candidateID: candidateID,
+        title: "A Great Show S02E01",
+        client: .sabnzbd
+    )
+
+    let associated = try await store.associateDownloadSubmission(
+        candidateID: candidateID,
+        seriesID: seriesID,
+        episodes: [episode]
+    )
+
+    #expect(associated.acquisitionContext?.televisionSeasonNumber == 2)
+    #expect(associated.acquisitionContext?.targets.first?.ancestors == [
+        .televisionSeason(seriesID: seriesID, number: 2),
+        MediaReference(kind: .televisionSeries, id: seriesID),
+    ])
+    try await store.close()
+}
+
 @Test func queuedDownloadCannotBeSubmittedAgainAfterReopen() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "callup-download-\(UUID().uuidString)", directoryHint: .isDirectory)

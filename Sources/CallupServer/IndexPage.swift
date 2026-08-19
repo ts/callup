@@ -122,7 +122,17 @@ let indexHTML = #"""
     .candidate-actions { display: flex; align-items: center; gap: 9px; margin-top: 5px; }
     .candidate-actions button { padding: 8px 11px; }
     .download-list { display: grid; gap: 9px; margin-top: 14px; }
+    .download-group { overflow: hidden; background: #131b26; border: 1px solid #263244; border-radius: 11px; }
+    .download-group summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; cursor: pointer; list-style: none; }
+    .download-group summary::-webkit-details-marker { display: none; }
+    .download-group summary::after { content: '›'; color: #91a0b3; font-size: 1.3rem; transform: rotate(0deg); transition: transform .15s ease; }
+    .download-group[open] summary::after { transform: rotate(90deg); }
+    .download-group-heading { display: grid; gap: 2px; min-width: 0; }
+    .download-group-detail { color: #91a0b3; font-size: .9rem; }
+    .download-group-count { flex: 0 0 auto; color: #91a0b3; font-size: .84rem; font-weight: 700; }
+    .download-group-items { display: grid; gap: 7px; padding: 0 9px 9px; border-top: 1px solid #263244; }
     .download-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; background: #131b26; border: 1px solid #263244; border-radius: 11px; }
+    .download-group .download-row { padding: 10px 8px; background: transparent; border: 0; border-radius: 0; }
     .download-title { min-width: 0; overflow-wrap: anywhere; }
     .download-state { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; color: #dce6f2; background: #344258; font-size: .8rem; font-weight: 750; text-transform: capitalize; }
     .download-state-downloading { color: #b9e8ff; background: #23566f; }
@@ -627,26 +637,51 @@ async function loadDownloads() {
     for (const submission of data.results) {
       downloadSubmissions.set(providerKey(submission.candidateID), submission);
     }
-    renderDownloads(data.results);
+    renderDownloads(data.results, data.groups);
   } catch (error) {
     status.textContent = error.message;
   }
 }
 
-function renderDownloads(items) {
+function renderDownloads(items, groups = null) {
   downloadResults.replaceChildren();
   downloadsEmpty.hidden = items.length !== 0;
-  for (const submission of items) {
+  const activityGroups = groups?.length ? groups : [{title: 'Downloads', detail: null, results: items}];
+  for (const group of activityGroups) {
+    const section = document.createElement('details');
+    section.className = 'download-group';
+    const summary = document.createElement('summary');
+    const heading = document.createElement('div');
+    heading.className = 'download-group-heading';
+    const title = document.createElement('strong');
+    title.textContent = group.title;
+    heading.append(title);
+    if (group.detail) {
+      const detail = document.createElement('span');
+      detail.className = 'download-group-detail';
+      detail.textContent = group.detail;
+      heading.append(detail);
+    }
+    const count = document.createElement('span');
+    count.className = 'download-group-count';
+    count.textContent = `${group.results.length} download${group.results.length === 1 ? '' : 's'}`;
+    summary.append(heading, count);
+    const rows = document.createElement('div');
+    rows.className = 'download-group-items';
+    for (const submission of group.results) {
     const row = document.createElement('article');
     row.className = 'download-row';
-    const title = document.createElement('strong');
-    title.className = 'download-title';
-    title.textContent = submission.title;
+    const releaseTitle = document.createElement('strong');
+    releaseTitle.className = 'download-title';
+    releaseTitle.textContent = submission.title;
     const state = document.createElement('span');
     state.className = `download-state download-state-${submission.state}`;
     state.textContent = downloadStateLabel(submission.state);
-    row.append(title, state);
-    downloadResults.append(row);
+    row.append(releaseTitle, state);
+    rows.append(row);
+    }
+    section.append(summary, rows);
+    downloadResults.append(section);
   }
   for (const button of document.querySelectorAll('[data-download-key]')) {
     applyDownloadButtonState(button, downloadSubmissions.get(button.dataset.downloadKey));
