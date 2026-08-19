@@ -935,7 +935,8 @@ async function loadRuntime() {
       `Metadata: ${health.metadata.join(', ')}`,
       connected ? `Releases: ${health.indexer} connected` : 'Releases: not configured',
       health.downloader !== 'not-configured' ? `Downloads: ${health.downloader} connected` : 'Downloads: not configured',
-      health.database === 'sqlite' ? 'Store: SQLite' : null
+      health.database === 'sqlite' ? 'Store: SQLite' : null,
+      health.revision && health.revision !== 'unknown' ? `Release: ${health.revision}` : null
     ].filter(Boolean);
     runtime.textContent = details.join(' · ');
   } catch {
