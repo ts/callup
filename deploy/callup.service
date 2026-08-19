@@ -11,6 +11,7 @@ Environment=CALLUP_HOST=0.0.0.0
 Environment=CALLUP_PORT=8484
 Environment=CALLUP_DATABASE_PATH=/var/lib/callup/callup.sqlite
 Environment=CALLUP_CONNECTIONS_PATH=/var/lib/callup/connections.json
+EnvironmentFile=-/etc/callup/callup-release.env
 EnvironmentFile=-/etc/callup/callup.env
 ExecStart=/opt/callup/bin/callup
 Restart=on-failure

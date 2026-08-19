@@ -947,7 +947,7 @@ async function loadRuntime() {
 
 function formatBuild(revision) {
   if (!revision || revision === 'unknown') {
-    return {label: 'Local build', title: 'Running local build'};
+    return {label: 'Build unknown', title: 'The running build did not report its release identity'};
   }
   const separator = revision.lastIndexOf('@');
   if (separator === -1) {

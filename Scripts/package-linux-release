@@ -24,6 +24,8 @@ install -m 0755 "$binary" "$release_dir/callup"
 install -m 0755 deploy/install.sh "$release_dir/install.sh"
 install -m 0644 deploy/callup.service "$release_dir/callup.service"
 install -m 0644 deploy/callup.env "$release_dir/callup.env"
+revision=$(git rev-parse --short HEAD)
+printf '%s\n' "CALLUP_REVISION=v${version}@${revision}" > "$release_dir/callup-release.env"
 tar -C dist -czf "$archive" "$(basename "$release_dir")"
 (cd dist && shasum -a 256 "$(basename "$archive")") > "${archive}.sha256"
 echo "$archive"

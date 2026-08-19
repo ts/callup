@@ -15,6 +15,7 @@ install -d -o callup -g media -m 0750 /var/lib/callup /opt/callup/bin
 install -d -o root -g media -m 0750 /etc/callup
 install -m 0755 "$release_dir/callup" /opt/callup/bin/callup
 install -m 0644 "$release_dir/callup.service" /etc/systemd/system/callup.service
+install -m 0644 "$release_dir/callup-release.env" /etc/callup/callup-release.env
 
 if [ ! -e /etc/callup/callup.env ]; then
   install -m 0640 -o root -g media "$release_dir/callup.env" /etc/callup/callup.env
