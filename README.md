@@ -28,8 +28,14 @@ The Callup name and logo are not licensed for use by derivative products.
 ## Install on Linux
 
 Releases contain a prebuilt, static `x86_64` Linux executable. Installation
-never compiles Swift on the destination host. To install a specific release as
-root, use its immutable tag:
+never compiles Swift on the destination host. Install the newest published
+release as root with one stable command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ts/callup/main/deploy/install-from-release.sh | sudo sh
+```
+
+To install or roll back to a specific immutable release, pass its version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.13/deploy/install-from-release.sh | sudo sh -s -- 0.1.0-dev.13
@@ -56,15 +62,22 @@ Scripts/package-linux-release 0.1.0-dev.13
 
 ### Proxmox VE
 
-For an optional dedicated LXC, run the versioned creator on the Proxmox host.
-It creates a small unprivileged Debian 13 container, installs the same verified
-release, and refuses to overwrite an existing container. Set
-`CALLUP_MEDIA_SOURCE` only when the host path should be bind-mounted as
-`/data`.
+For an optional dedicated LXC, run the creator on the Proxmox host. It creates
+a small unprivileged Debian 13 container, installs the newest verified release,
+and refuses to overwrite an existing container. Set `CALLUP_MEDIA_SOURCE` only
+when the host path should be bind-mounted as `/data`.
 
 ```bash
-CALLUP_RELEASE=0.1.0-dev.13 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.13/deploy/proxmox-create-lxc.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/main/deploy/proxmox-create-lxc.sh)"
 ```
+
+Update the existing Callup LXC with that same latest release command:
+
+```bash
+CALLUP_REUSE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ts/callup/main/deploy/proxmox-create-lxc.sh)"
+```
+
+Set `CALLUP_RELEASE=VERSION` to install a specific release instead.
 
 ## Restart the live app
 

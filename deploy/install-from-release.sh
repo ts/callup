@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-version=${1:?Usage: install-from-release.sh VERSION}
+version=${1:-latest}
 repository=${CALLUP_REPOSITORY:-ts/callup}
 
 case "$(uname -m)" in
@@ -11,6 +11,17 @@ esac
 
 command -v curl >/dev/null 2>&1 || { echo "curl is required." >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required." >&2; exit 1; }
+
+if [ "$version" = latest ]; then
+  version=$(curl -fsSL "https://api.github.com/repos/${repository}/releases?per_page=1" \
+    | sed -n 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"v\([^"]*\)".*/\1/p' \
+    | head -n 1)
+  [ -n "$version" ] || { echo "Could not determine the latest Callup release." >&2; exit 1; }
+fi
+
+case "$version" in
+  *[!0-9A-Za-z._-]*|'') echo "Invalid Callup release version." >&2; exit 1 ;;
+esac
 
 archive="callup-${version}-linux-${architecture}.tar.gz"
 base_url="https://github.com/${repository}/releases/download/v${version}"

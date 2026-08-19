@@ -5,7 +5,7 @@ set -eu
 : "${CALLUP_HOSTNAME:=callup}"
 : "${CALLUP_STORAGE:=local}"
 : "${CALLUP_TEMPLATE_STORAGE:=local}"
-: "${CALLUP_RELEASE:?Set CALLUP_RELEASE to the Callup release version to install.}"
+: "${CALLUP_RELEASE:=latest}"
 : "${CALLUP_CORES:=1}"
 : "${CALLUP_MEMORY:=768}"
 : "${CALLUP_SWAP:=256}"
@@ -62,8 +62,12 @@ if [ "$(pct status "$CALLUP_CTID" | awk '{ print $2 }')" != running ]; then
   pct start "$CALLUP_CTID"
 fi
 pct exec "$CALLUP_CTID" -- sh -lc 'apt-get update && apt-get install -y --no-install-recommends ca-certificates curl'
+installer_ref="v${CALLUP_RELEASE}"
+if [ "$CALLUP_RELEASE" = latest ]; then
+  installer_ref=main
+fi
 pct exec "$CALLUP_CTID" -- sh -lc \
-  "curl -fsSL https://raw.githubusercontent.com/ts/callup/v${CALLUP_RELEASE}/deploy/install-from-release.sh | sh -s -- ${CALLUP_RELEASE}"
+  "curl -fsSL https://raw.githubusercontent.com/ts/callup/${installer_ref}/deploy/install-from-release.sh | sh -s -- ${CALLUP_RELEASE}"
 
 if [ -n "${CALLUP_TV_LIBRARY_PATH:-}" ] || [ -n "${CALLUP_MOVIE_LIBRARY_PATH:-}" ]; then
   {
