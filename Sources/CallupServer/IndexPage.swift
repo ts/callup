@@ -99,12 +99,15 @@ let indexHTML = #"""
     .download-settings-choice { display: flex; align-items: center; gap: 10px; color: #edf2f7; font-weight: 720; }
     .download-preferences { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; min-width: min(100%, 460px); }
     .download-preferences .field { font-size: .82rem; }
-    .episode { display: grid; grid-template-columns: 74px 1fr auto auto; gap: 12px; padding: 11px 16px; border-bottom: 1px solid #202b3a; }
-    .episode.selectable { grid-template-columns: 18px 74px 1fr auto auto; align-items: center; }
+    .episode { display: grid; grid-template-columns: 74px minmax(160px, .7fr) minmax(270px, 1.3fr) minmax(0, 2fr) auto; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid #202b3a; }
+    .episode.selectable { grid-template-columns: 18px 74px minmax(160px, .7fr) minmax(270px, 1.3fr) minmax(0, 2fr) auto; }
     .episode:last-child { border-bottom: 0; }
     .episode.has-download { background: #12251a; }
     .episode-download-state { display: inline-block; margin-left: 8px; padding: 3px 8px; border-radius: 999px; color: #c8f8d0; background: #276b38; font-size: .78rem; font-weight: 750; }
     .episode-code { color: #64d67c; font-variant-numeric: tabular-nums; }
+    .episode-title, .episode-library-traits, .episode .meta { min-width: 0; }
+    .episode-library-traits { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    .episode .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .episode-search { padding: 6px 9px; }
     .release-results { padding: 14px 16px; background: #0e151f; border-bottom: 1px solid #263244; }
     .episode-releases { padding: 10px 16px 14px 120px; background: #0e151f; border-bottom: 1px solid #263244; }
@@ -137,6 +140,7 @@ let indexHTML = #"""
     .trait-codec-av1 { background: #8a493d; }
     .trait-codec-mpeg-2 { background: #6f4e70; }
     .trait-source { background: #704e86; }
+    .trait-availability-on-disk { background: #276b38; }
     .trait-coverage { background: #49596e; }
     .status { min-height: 24px; margin-top: 14px; color: #f0b95b; }
     .metadata-credits { display: grid; gap: 8px; margin-top: 28px; padding-top: 22px; border-top: 1px solid #263244; }
@@ -153,6 +157,8 @@ let indexHTML = #"""
       .episode.selectable { grid-template-columns: 18px 66px 1fr; }
       .episode .meta { grid-column: 2; }
       .episode.selectable .meta { grid-column: 3; }
+      .episode .episode-library-traits { grid-column: 2; }
+      .episode.selectable .episode-library-traits { grid-column: 3; }
       .episode .episode-search { grid-column: 2; justify-self: start; }
       .episode.selectable .episode-search { grid-column: 3; }
       .episode-releases { padding-left: 16px; }
@@ -698,12 +704,10 @@ function applyEpisodeLibraryStates() {
     row.classList.add('has-download');
     const checkbox = row.querySelector('[data-episode-key]');
     if (checkbox) checkbox.checked = false;
-    const badge = document.createElement('span');
-    badge.className = 'episode-download-state episode-library-state';
     const files = onDiskEpisodeFiles.get(row.dataset.downloadEpisodeKey) || [];
-    badge.textContent = libraryStateLabel(files);
-    badge.title = files.map(file => file.relativePath).join('\n');
-    row.querySelector('.episode-title').append(badge);
+    const traitContainer = row.querySelector('.episode-library-traits');
+    traitContainer.replaceChildren();
+    renderLibraryTraits(traitContainer, files);
     if (files.length) {
       const details = document.createElement('span');
       details.className = 'episode-library-details';
@@ -1438,6 +1442,8 @@ function renderSeasons(series, items, canChoose) {
       const title = document.createElement('span');
       title.className = 'episode-title';
       title.textContent = episode.title;
+      const libraryTraits = document.createElement('div');
+      libraryTraits.className = 'episode-library-traits';
       const meta = document.createElement('span');
       meta.className = 'meta';
       meta.textContent = [episode.airDate, episode.runtimeMinutes && `${episode.runtimeMinutes} min`].filter(Boolean).join(' · ');
@@ -1445,7 +1451,7 @@ function renderSeasons(series, items, canChoose) {
       episodeReleases.className = 'episode-releases';
       episodeReleases.dataset.releaseEpisodeNumber = episode.episodeNumber == null ? '' : String(episode.episodeNumber);
       episodeReleases.hidden = true;
-      row.append(code, title, meta);
+      row.append(code, title, libraryTraits, meta);
       if (episode.episodeNumber != null) {
         const searchEpisode = document.createElement('button');
         searchEpisode.type = 'button';
@@ -2122,6 +2128,18 @@ function libraryStateLabel(files) {
     traits.source,
     formatBytes(file.sizeBytes)
   ].filter(Boolean).join(' · ');
+}
+
+function renderLibraryTraits(container, files) {
+  const file = files?.[0];
+  if (!file) return;
+  const traits = file.inferredTraits || {};
+  appendTraitPill(container, 'availability', 'On disk');
+  appendTraitPill(container, 'resolution', traits.resolution);
+  appendTraitPill(container, 'codec', traits.videoCodec);
+  appendTraitPill(container, 'source', traits.source);
+  appendTraitPill(container, 'size', formatBytes(file.sizeBytes));
+  container.title = files.map(file => file.relativePath).join('\n');
 }
 
 function libraryFileLabel(files) {
