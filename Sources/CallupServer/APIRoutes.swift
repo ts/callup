@@ -874,7 +874,7 @@ private func downloadActivityGroups(
             metadata: metadata,
             cachedEpisodes: &cachedEpisodes
         ) ?? DownloadActivityGroup(
-            id: "release:\(submission.candidateID.provider):\(submission.candidateID.value)",
+            id: "other-downloads",
             title: "Other downloads",
             detail: nil,
             results: []
@@ -910,40 +910,51 @@ private func downloadActivityGroup(
 ) async -> DownloadActivityGroup? {
     guard let context = submission.acquisitionContext else { return nil }
     let episodeTargets = context.targets.filter { $0.media.kind == .televisionEpisode }
-    guard !episodeTargets.isEmpty,
-          episodeTargets.count == context.targets.count,
-          let seriesID = context.televisionSeriesID else {
-        return nil
-    }
-
-    let season: Int
-    if let persistedSeason = context.televisionSeasonNumber {
-        season = persistedSeason
-    } else {
-        let episodes: [TelevisionEpisode]
-        if let cached = cachedEpisodes[seriesID] {
-            episodes = cached
-        } else if let fetched = try? await metadata.episodes(for: seriesID) {
-            cachedEpisodes[seriesID] = fetched
-            episodes = fetched
+    if !episodeTargets.isEmpty,
+       episodeTargets.count == context.targets.count,
+       let seriesID = context.televisionSeriesID {
+        let season: Int
+        if let persistedSeason = context.televisionSeasonNumber {
+            season = persistedSeason
         } else {
+            let episodes: [TelevisionEpisode]
+            if let cached = cachedEpisodes[seriesID] {
+                episodes = cached
+            } else if let fetched = try? await metadata.episodes(for: seriesID) {
+                cachedEpisodes[seriesID] = fetched
+                episodes = fetched
+            } else {
+                return nil
+            }
+            let seasonNumbers = Set(episodeTargets.compactMap { target in
+                episodes.first(where: { $0.id == target.media.id })?.seasonNumber
+            })
+            guard seasonNumbers.count == 1, let legacySeason = seasonNumbers.first else { return nil }
+            season = legacySeason
+        }
+
+        guard let series = try? await store.trackedTelevisionSeries(id: seriesID)?.series else {
             return nil
         }
-        let seasonNumbers = Set(episodeTargets.compactMap { target in
-            episodes.first(where: { $0.id == target.media.id })?.seasonNumber
-        })
-        guard seasonNumbers.count == 1, let legacySeason = seasonNumbers.first else { return nil }
-        season = legacySeason
+
+        return DownloadActivityGroup(
+            id: "television:\(seriesID.provider):\(seriesID.value):season:\(season)",
+            title: series.title,
+            detail: "Season \(season)",
+            results: []
+        )
     }
 
-    guard let series = try? await store.trackedTelevisionSeries(id: seriesID)?.series else {
+    guard context.targets.count == 1,
+          let movieTarget = context.targets.first,
+          movieTarget.media.kind == .movie,
+          let movie = try? await store.trackedMovie(id: movieTarget.media.id)?.movie else {
         return nil
     }
-
     return DownloadActivityGroup(
-        id: "television:\(seriesID.provider):\(seriesID.value):season:\(season)",
-        title: series.title,
-        detail: "Season \(season)",
+        id: "movie:\(movie.id.provider):\(movie.id.value)",
+        title: movie.title,
+        detail: "Movie",
         results: []
     )
 }

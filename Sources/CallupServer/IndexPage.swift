@@ -131,16 +131,17 @@ let indexHTML = #"""
     .candidate-actions button { padding: 8px 11px; }
     .download-list { display: grid; gap: 9px; margin-top: 14px; }
     .download-group { overflow: hidden; background: #131b26; border: 1px solid #263244; border-radius: 11px; }
-    .download-group summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; cursor: pointer; list-style: none; }
+    .download-group summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 13px 14px; cursor: pointer; list-style: none; }
     .download-group summary::-webkit-details-marker { display: none; }
     .download-group summary::after { content: '›'; color: #91a0b3; font-size: 1.3rem; transform: rotate(0deg); transition: transform .15s ease; }
     .download-group[open] summary::after { transform: rotate(90deg); }
     .download-group-heading { display: grid; gap: 2px; min-width: 0; }
     .download-group-detail { color: #91a0b3; font-size: .9rem; }
     .download-group-count { flex: 0 0 auto; color: #91a0b3; font-size: .84rem; font-weight: 700; }
-    .download-group-items { display: grid; gap: 7px; padding: 0 9px 9px; border-top: 1px solid #263244; }
+    .download-group-items { display: grid; border-top: 1px solid #263244; }
     .download-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; background: #131b26; border: 1px solid #263244; border-radius: 11px; }
-    .download-group .download-row { padding: 10px 8px; background: transparent; border: 0; border-radius: 0; }
+    .download-group .download-row { padding: 13px 14px; background: transparent; border: 0; border-bottom: 1px solid #202b3a; border-radius: 0; }
+    .download-group .download-row:last-child { border-bottom: 0; }
     .download-title { min-width: 0; overflow-wrap: anywhere; }
     .download-state { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; color: #dce6f2; background: #344258; font-size: .8rem; font-weight: 750; text-transform: capitalize; }
     .download-state-downloading { color: #b9e8ff; background: #23566f; }
@@ -519,7 +520,6 @@ loadTrackedMedia();
 loadConnections();
 loadUpdates();
 loadDownloads();
-setInterval(loadDownloads, 15_000);
 
 lineupSort.addEventListener('change', () => {
   const url = new URL(window.location.href);
