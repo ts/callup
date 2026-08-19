@@ -60,6 +60,7 @@ let indexHTML = #"""
     .utility-panel { padding: 20px 0 4px; }
     .utility-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .utility-heading h2 { margin: 0; }
+    .lineup-controls { display: flex; align-items: end; gap: 10px; }
     .lineup-sort { width: min(100%, 190px); }
     .connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .connection-form { display: grid; gap: 13px; padding: 18px; }
@@ -347,11 +348,6 @@ let indexHTML = #"""
       <div id="movie-release-results" class="candidates"></div>
     </section>
 
-    <section id="lineup-section" hidden>
-      <h2 id="selected-title">Lineup</h2>
-      <p id="lineup-description" class="muted"></p>
-      <div id="seasons"></div>
-    </section>
   </div>
 
   <section id="lineup-page" class="utility-panel" data-view="lineup" hidden>
@@ -360,16 +356,27 @@ let indexHTML = #"""
         <h2>Lineup</h2>
         <p class="muted">Everything you want, ordered by what matters now.</p>
       </div>
-      <label class="field lineup-sort">Sort by
-        <select id="lineup-sort">
-          <option value="nextAiring">Next airing</option>
-          <option value="lastDownloaded">Last downloaded</option>
-          <option value="title">Title</option>
-        </select>
-      </label>
+      <div class="lineup-controls">
+        <div class="view-toggle" role="group" aria-label="Lineup view">
+          <button type="button" data-tracked-view="cards" aria-pressed="true">Cards</button>
+          <button type="button" data-tracked-view="list" aria-pressed="false">List</button>
+        </div>
+        <label class="field lineup-sort">Sort by
+          <select id="lineup-sort">
+            <option value="nextAiring">Next airing</option>
+            <option value="lastDownloaded">Last downloaded</option>
+            <option value="title">Title</option>
+          </select>
+        </label>
+      </div>
     </div>
     <p id="tracked-empty" class="empty muted">Nothing in your Lineup yet.</p>
-    <div id="tracked-results" class="results tracked-results list-view"></div>
+    <div id="tracked-results" class="results tracked-results"></div>
+    <section id="lineup-section" hidden>
+      <h2 id="selected-title">Lineup</h2>
+      <p id="lineup-description" class="muted"></p>
+      <div id="seasons"></div>
+    </section>
   </section>
 </main>
 <script>
@@ -412,6 +419,7 @@ const status = document.querySelector('#status');
 const buildBadge = document.querySelector('#build-badge');
 const trackedEmpty = document.querySelector('#tracked-empty');
 const trackedResults = document.querySelector('#tracked-results');
+const trackedViewButtons = document.querySelectorAll('[data-tracked-view]');
 const lineupSort = document.querySelector('#lineup-sort');
 const downloadsSection = document.querySelector('#downloads-section');
 const downloadsEmpty = document.querySelector('#downloads-empty');
@@ -448,6 +456,7 @@ const downloadSubmissions = new Map();
 let onDiskEpisodeKeys = new Set();
 const onDiskEpisodeFiles = new Map();
 
+setTrackedView(loadTrackedView());
 renderRoute();
 loadRuntime();
 loadTrackedMedia();
@@ -462,8 +471,31 @@ lineupSort.addEventListener('change', () => {
   loadTrackedMedia();
 });
 
+for (const button of trackedViewButtons) {
+  button.addEventListener('click', () => setTrackedView(button.dataset.trackedView));
+}
+
 for (const button of searchFilterButtons) {
   button.addEventListener('click', () => setSearchFilter(button.dataset.searchFilter));
+}
+
+function loadTrackedView() {
+  try {
+    return localStorage.getItem('callup.trackedView') || 'cards';
+  } catch {
+    return 'cards';
+  }
+}
+
+function setTrackedView(view) {
+  const selectedView = view === 'list' ? 'list' : 'cards';
+  trackedResults.classList.toggle('list-view', selectedView === 'list');
+  for (const button of trackedViewButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.trackedView === selectedView));
+  }
+  try {
+    localStorage.setItem('callup.trackedView', selectedView);
+  } catch {}
 }
 
 for (const button of settingsTabButtons) {
@@ -614,7 +646,6 @@ function renderDownloads(items) {
     applyDownloadButtonState(button, downloadSubmissions.get(button.dataset.downloadKey));
   }
   applyEpisodeDownloadStates(items);
-  renderTrackedMedia();
 }
 
 function applyEpisodeDownloadStates(items) {
@@ -1312,6 +1343,7 @@ function isFutureDate(value) {
 }
 
 async function loadSeries(series, button) {
+  if (window.location.pathname !== '/lineup') navigate('/lineup');
   setBusy(button, true, 'Loading…');
   status.textContent = '';
   movieReleaseSection.hidden = true;
@@ -1720,29 +1752,32 @@ async function loadEpisodeReleases(series, season, section, episode, button, con
 }
 
 async function searchEpisodeReleases(series, season, episodes) {
-  const searches = await Promise.all(episodes.map(async episode => {
-    const parameters = new URLSearchParams({
-      q: series.title,
-      tvmazeID: series.id.value,
-      season: String(season.number),
-      episode: String(episode.episodeNumber)
-    });
-    return {
-      episode,
-      data: await requestJSON(`/api/tv/releases?${parameters}`)
-    };
-  }));
-  const candidates = new Map();
+  const parameters = new URLSearchParams({
+    q: series.title,
+    tvmazeID: series.id.value,
+    season: String(season.number)
+  });
+  const data = await requestJSON(`/api/tv/releases?${parameters}`);
+  const selectedEpisodeNumbers = new Set(episodes.map(episode => episode.episodeNumber));
   const matchedEpisodes = new Map();
-  for (const search of searches) {
-    for (const candidate of search.data.results) {
-      const key = providerKey(candidate.id);
-      candidates.set(key, candidate);
-      if (!matchedEpisodes.has(key)) matchedEpisodes.set(key, new Set());
-      matchedEpisodes.get(key).add(search.episode.episodeNumber);
+  for (const candidate of data.results) {
+    const coveredEpisodes = new Set();
+    for (const coverage of candidate.coverage) {
+      if (coverage.seasonNumber !== season.number) continue;
+      if (coverage.scope === 'televisionSeason') {
+        for (const episodeNumber of selectedEpisodeNumbers) coveredEpisodes.add(episodeNumber);
+      } else {
+        for (const episodeNumber of coverage.episodeNumbers || []) {
+          if (selectedEpisodeNumbers.has(episodeNumber)) coveredEpisodes.add(episodeNumber);
+        }
+      }
     }
+    if (coveredEpisodes.size) matchedEpisodes.set(providerKey(candidate.id), coveredEpisodes);
   }
-  return {candidates: [...candidates.values()], matchedEpisodes};
+  return {
+    candidates: data.results.filter(candidate => matchedEpisodes.has(providerKey(candidate.id))),
+    matchedEpisodes
+  };
 }
 
 function resetReleaseResults(container, section) {

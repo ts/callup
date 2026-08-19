@@ -45,7 +45,8 @@ public actor NewznabClient: TelevisionReleaseIndexer, MovieReleaseIndexer {
                 tvdbID: tvdbID,
                 imdbID: imdbID,
                 season: season,
-                episode: episode
+                episode: episode,
+                limit: 25
             )
         )
 
@@ -59,7 +60,7 @@ public actor NewznabClient: TelevisionReleaseIndexer, MovieReleaseIndexer {
         let url = try NewznabRequestBuilder.movieSearchURL(
             endpoint: endpoint,
             apiKey: apiKey,
-            search: NewznabMovieSearch(query: query, imdbID: imdbID)
+            search: NewznabMovieSearch(query: query, imdbID: imdbID, limit: 25)
         )
         return try await search(url)
     }
