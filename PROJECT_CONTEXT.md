@@ -57,6 +57,10 @@ continue without reconstructing the product decisions from chat.
 - The Linux deployment targets Debian's native Swift 6.0 toolchain. Keep the
   package manifest at Swift tools 6.0 unless an observed source requirement
   needs a newer toolchain.
+- Public Linux binaries are stripped at link time, and release archives exclude
+  macOS extended attributes. Packaging rejects unstripped, stale, dynamic, or
+  non-x86_64 artifacts so small destination filesystems do not absorb build
+  metadata.
 - Callup fetches the NZB server-side, uploads it to SABnzbd, persists the
   provider reference and returned SAB job ID, prevents repeat submission, and
   reconciles sending, snatched, downloading, downloaded, and blocked states.

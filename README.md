@@ -63,7 +63,10 @@ Public artifacts are built from the token-free source with the matching
 open-source Swift toolchain and static Linux SDK, then packaged with
 `Scripts/package-linux-release VERSION`. The public build script selects the
 static x86_64 target explicitly so packaging cannot reuse a stale artifact from
-another architecture. `Scripts/build-linux-release` is only for private
+another architecture. Public binaries are stripped during the Linux link so a
+small LXC does not need to stage hundreds of megabytes of debug information;
+packaging also excludes host-only macOS extended attributes.
+`Scripts/build-linux-release` is only for private
 credential-bearing builds: it temporarily injects the TMDB token from the
 gitignored `.env`, removes the generated source afterward, and its output must
 not be published.

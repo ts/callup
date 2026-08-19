@@ -19,4 +19,5 @@ cd "$project_directory"
 swiftly run swift build \
     -c release \
     --swift-sdk x86_64-swift-linux-musl \
+    -Xlinker -s \
     --product callup

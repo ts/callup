@@ -9,8 +9,8 @@ archive="dist/callup-${version}-linux-amd64.tar.gz"
 test -x "$binary" || { echo "Missing static Linux artifact: $binary" >&2; exit 1; }
 
 case "$(file "$binary")" in
-  *"ELF 64-bit LSB executable, x86-64"*"statically linked"*) ;;
-  *) echo "Refusing to package a binary that is not static Linux x86_64: $binary" >&2; exit 1 ;;
+  *"ELF 64-bit LSB executable, x86-64"*"statically linked"*"stripped"*) ;;
+  *) echo "Refusing to package a binary that is not stripped static Linux x86_64: $binary" >&2; exit 1 ;;
 esac
 
 if find Package.swift Sources -type f -newer "$binary" -print -quit | grep -q .; then
@@ -29,6 +29,6 @@ install -m 0644 deploy/callup-update.path "$release_dir/callup-update.path"
 install -m 0644 deploy/callup.env "$release_dir/callup.env"
 revision=$(git rev-parse --short HEAD)
 printf '%s\n' "CALLUP_REVISION=v${version}@${revision}" > "$release_dir/callup-release.env"
-tar -C dist -czf "$archive" "$(basename "$release_dir")"
+COPYFILE_DISABLE=1 tar --no-xattrs -C dist -czf "$archive" "$(basename "$release_dir")"
 (cd dist && shasum -a 256 "$(basename "$archive")") > "${archive}.sha256"
 echo "$archive"
