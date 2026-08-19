@@ -1,0 +1,208 @@
+#!/bin/sh
+
+set -eu
+
+request_directory=${CALLUP_UPDATE_DIRECTORY:-/var/lib/callup/updates}
+repository=${CALLUP_UPDATE_REPOSITORY:-ts/callup}
+request_file="$request_directory/request"
+processing_file="$request_directory/request.processing"
+status_file="$request_directory/status.json"
+binary=/opt/callup/bin/callup
+release_environment=/etc/callup/callup-release.env
+temporary_directory=
+rollback_directory=
+version=unknown
+swapped=0
+complete=0
+
+runtime_value() {
+    key=$1
+    fallback=$2
+    service_pid=$(systemctl show callup.service --property MainPID --value)
+    if [ -n "$service_pid" ] && [ "$service_pid" != 0 ] && [ -r "/proc/${service_pid}/environ" ]; then
+        value=$(tr '\000' '\n' < "/proc/${service_pid}/environ" \
+            | awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }')
+        if [ -n "$value" ]; then
+            printf '%s\n' "$value"
+            return
+        fi
+    fi
+    printf '%s\n' "$fallback"
+}
+
+backup_state_file() {
+    source_file=$1
+    backup_name=$2
+    [ ! -L "$source_file" ] || return 1
+    if [ -f "$source_file" ]; then
+        cp -p "$source_file" "$rollback_directory/$backup_name"
+        : > "$rollback_directory/$backup_name.present"
+    fi
+}
+
+restore_state_file() {
+    destination=$1
+    backup_name=$2
+    rm -f "$destination"
+    if [ -f "$rollback_directory/$backup_name.present" ]; then
+        cp -p "$rollback_directory/$backup_name" "$destination"
+    fi
+}
+
+write_status() {
+    state=$1
+    message=$2
+    status_temporary=$(mktemp "$request_directory/.status.XXXXXX")
+    printf '{"state":"%s","version":"%s","message":"%s","updatedAt":"%s"}\n' \
+        "$state" "$version" "$message" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$status_temporary"
+    chmod 0644 "$status_temporary"
+    mv -f "$status_temporary" "$status_file"
+}
+
+finish() {
+    result=$?
+    trap - EXIT HUP INT TERM
+    set +e
+    rm -f "$processing_file"
+    [ -z "$temporary_directory" ] || rm -rf "$temporary_directory"
+    if [ "$complete" -eq 0 ]; then
+        if [ "$swapped" -eq 1 ] && [ -n "$rollback_directory" ]; then
+            systemctl stop callup.service
+            install -m 0755 "$rollback_directory/callup" "$binary"
+            install -m 0644 "$rollback_directory/callup-release.env" "$release_environment"
+            restore_state_file "$database_path" database
+            restore_state_file "${database_path}-wal" database-wal
+            restore_state_file "${database_path}-shm" database-shm
+            restore_state_file "$connections_path" connections
+            systemctl daemon-reload
+            systemctl start callup.service
+            rollback_attempt=0
+            rollback_healthy=0
+            while [ "$rollback_attempt" -lt 15 ]; do
+                if curl -fsS http://127.0.0.1:8484/health >/dev/null 2>&1; then
+                    rollback_healthy=1
+                    break
+                fi
+                rollback_attempt=$((rollback_attempt + 1))
+                sleep 1
+            done
+            if [ "$rollback_healthy" -eq 1 ]; then
+                write_status rolledBack "The update failed. Callup restored the previous release."
+            else
+                write_status failed "The update failed, and the previous release did not restart."
+            fi
+        else
+            write_status failed "The update could not be installed. The running release was not changed."
+        fi
+    fi
+    [ -z "$rollback_directory" ] || rm -rf "$rollback_directory"
+    exit "$result"
+}
+
+trap finish EXIT HUP INT TERM
+
+if [ ! -f "$processing_file" ]; then
+    if ! mv "$request_file" "$processing_file" 2>/dev/null; then
+        complete=1
+        exit 0
+    fi
+fi
+
+line_count=$(wc -l < "$processing_file" | tr -d ' ')
+[ "$line_count" = 1 ] || exit 1
+IFS= read -r requested_version < "$processing_file"
+printf '%s\n' "$requested_version" | grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$' || exit 1
+version=$requested_version
+
+current_version=$(sed -n 's/^CALLUP_REVISION=v\([^@]*\)@.*$/\1/p' "$release_environment")
+printf '%s\n' "$current_version" | grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?$' || exit 1
+case "$current_version" in
+    *-*) ;;
+    *) case "$version" in *-*) exit 1 ;; esac ;;
+esac
+normalize_version() {
+    case $1 in
+        *-*) printf '%s~%s\n' "${1%%-*}" "${1#*-}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+dpkg --compare-versions "$(normalize_version "$version")" gt "$(normalize_version "$current_version")" || exit 1
+
+write_status installing "Downloading and verifying the update."
+
+case "$(uname -m)" in
+    x86_64|amd64) architecture=amd64 ;;
+    *) exit 1 ;;
+esac
+
+archive="callup-${version}-linux-${architecture}.tar.gz"
+release_name="callup-${version}-linux-${architecture}"
+base_url="https://github.com/${repository}/releases/download/v${version}"
+temporary_directory=$(mktemp -d)
+
+curl -fsSL "${base_url}/${archive}" -o "${temporary_directory}/${archive}"
+curl -fsSL "${base_url}/${archive}.sha256" -o "${temporary_directory}/${archive}.sha256"
+checksum_lines=$(wc -l < "${temporary_directory}/${archive}.sha256" | tr -d ' ')
+[ "$checksum_lines" = 1 ] || exit 1
+awk -v archive="$archive" '
+    NF == 2 && length($1) == 64 && $1 !~ /[^0-9a-f]/ && $2 == archive { valid = 1 }
+    END { exit !valid }
+' "${temporary_directory}/${archive}.sha256"
+(cd "$temporary_directory" && sha256sum -c "${archive}.sha256")
+
+tar -tvzf "${temporary_directory}/${archive}" | awk '
+    substr($1, 1, 1) != "-" && substr($1, 1, 1) != "d" { invalid = 1 }
+    END { exit invalid }
+'
+tar -tzf "${temporary_directory}/${archive}" | awk -v prefix="${release_name}/" '
+    index($0, prefix) != 1 || $0 ~ /(^|\/)\.\.(\/|$)/ { invalid = 1 }
+    END { exit invalid }
+'
+tar -C "$temporary_directory" -xzf "${temporary_directory}/${archive}"
+release_directory="${temporary_directory}/${release_name}"
+
+for required_file in callup callup-release.env callup.service callup-update callup-update.service callup-update.path; do
+    [ -f "${release_directory}/${required_file}" ] || exit 1
+done
+[ -x "${release_directory}/callup" ] || exit 1
+
+rollback_directory=$(mktemp -d /opt/callup/.rollback.XXXXXX)
+install -m 0755 "$binary" "$rollback_directory/callup"
+install -m 0644 "$release_environment" "$rollback_directory/callup-release.env"
+install -m 0755 "${release_directory}/callup" /opt/callup/bin/callup.new
+database_path=$(runtime_value CALLUP_DATABASE_PATH /var/lib/callup/callup.sqlite)
+connections_path=$(runtime_value CALLUP_CONNECTIONS_PATH /var/lib/callup/connections.json)
+case "$database_path" in /var/lib/callup/*) ;; *) exit 1 ;; esac
+case "$connections_path" in /var/lib/callup/*) ;; *) exit 1 ;; esac
+
+write_status installing "Restarting Callup on the new release."
+systemctl stop callup.service
+backup_state_file "$database_path" database
+backup_state_file "${database_path}-wal" database-wal
+backup_state_file "${database_path}-shm" database-shm
+backup_state_file "$connections_path" connections
+mv -f /opt/callup/bin/callup.new "$binary"
+install -m 0644 "${release_directory}/callup-release.env" "$release_environment"
+swapped=1
+
+install -d -o root -g root -m 0755 /opt/callup/libexec
+install -m 0755 "${release_directory}/callup-update" /opt/callup/libexec/callup-update
+install -m 0644 "${release_directory}/callup.service" /etc/systemd/system/callup.service
+install -m 0644 "${release_directory}/callup-update.service" /etc/systemd/system/callup-update.service
+install -m 0644 "${release_directory}/callup-update.path" /etc/systemd/system/callup-update.path
+systemctl daemon-reload
+systemctl start callup.service
+
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+    if health=$(curl -fsS http://127.0.0.1:8484/health 2>/dev/null) \
+        && printf '%s\n' "$health" | grep -Fq "v${version}@"; then
+        write_status succeeded "Callup updated successfully."
+        complete=1
+        exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+
+exit 1

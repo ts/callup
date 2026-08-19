@@ -1,6 +1,7 @@
 import CallupCore
 import CallupDownloadClients
 import CallupPersistence
+import CallupUpdates
 import Vapor
 
 func registerRoutes(
@@ -12,6 +13,7 @@ func registerRoutes(
     downloadClientProbe: DownloadClientProbe,
     sabnzbdClient: SABnzbdClient,
     library: LibraryInventory,
+    updates: CallupUpdateService,
     revision: String
 ) {
     registerPageRoutes(on: application)
@@ -24,6 +26,7 @@ func registerRoutes(
         downloadClientProbe: downloadClientProbe,
         sabnzbdClient: sabnzbdClient,
         library: library,
+        updates: updates,
         revision: revision
     )
 }

@@ -1,0 +1,29 @@
+[Unit]
+Description=Install one verified Callup release
+Documentation=https://github.com/ts/callup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0027
+EnvironmentFile=-/etc/callup/callup-update.env
+ExecStart=/opt/callup/libexec/callup-update
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/etc/callup /etc/systemd/system/callup.service /etc/systemd/system/callup-update.service /etc/systemd/system/callup-update.path /opt/callup /var/lib/callup/updates
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

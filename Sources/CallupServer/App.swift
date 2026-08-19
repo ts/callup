@@ -5,6 +5,7 @@ import CallupNewznab
 import CallupPersistence
 import CallupTMDB
 import CallupTVMaze
+import CallupUpdates
 import Foundation
 import Vapor
 
@@ -77,6 +78,15 @@ enum CallupServer {
             }
         }
         let revision = ProcessInfo.processInfo.environment["CALLUP_REVISION"] ?? "unknown"
+        let updateRepository = ProcessInfo.processInfo.environment["CALLUP_UPDATE_REPOSITORY"]
+            ?? "ts/callup"
+        let updateDirectory = ProcessInfo.processInfo.environment["CALLUP_UPDATE_DIRECTORY"]
+            ?? "/var/lib/callup/updates"
+        let updates = CallupUpdateService(
+            revision: revision,
+            provider: GitHubCallupUpdateClient(repository: updateRepository),
+            directory: URL(fileURLWithPath: updateDirectory, isDirectory: true)
+        )
         application.lifecycle.use(StoreLifecycle(store: store))
         application.lifecycle.use(
             DownloadReconciliationLifecycle(worker: reconciliationWorker)
@@ -91,6 +101,7 @@ enum CallupServer {
             downloadClientProbe: downloadClientProbe,
             sabnzbdClient: sabnzbdClient,
             library: library,
+            updates: updates,
             revision: revision
         )
     }
@@ -650,6 +661,13 @@ struct ConnectionSettingsResponse: Content {
     let downloadClient: DownloadClientConnectionResponse?
     let metadata: [MetadataConnectionResponse]
 }
+
+struct RequestUpdateRequest: Content {
+    let version: String
+    let confirm: Bool
+}
+
+extension CallupUpdateStatus: Content {}
 
 struct SubmitDownloadRequest: Content {
     let candidateID: ProviderReference

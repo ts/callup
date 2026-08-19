@@ -42,9 +42,22 @@ curl -fsSL https://raw.githubusercontent.com/ts/callup/v0.1.0-dev.13/deploy/inst
 ```
 
 The bootstrap downloads the release archive and its SHA-256 file, verifies the
-archive, then installs and enables `callup.service`. Runtime configuration is
-preserved at `/etc/callup/callup.env`; set the optional library roots there
-before restarting the service.
+archive, then installs and enables `callup.service` and the restricted
+`callup-update.path` system updater. Runtime configuration is preserved at
+`/etc/callup/callup.env`; set the optional library roots there before restarting
+the service.
+
+After that bootstrap, Settings → Updates is the normal update path. Callup only
+writes a validated request as its unprivileged service user. A separate
+root-owned systemd unit downloads an official newer release, validates its
+checksum and archive shape, stages an atomic binary replacement, restarts
+Callup, checks `/health`, and restores the previous binary if the new release
+does not become healthy. The command-line installer remains the recovery and
+explicit-version path.
+
+Forks can set `CALLUP_REPOSITORY=owner/repository` during bootstrap. The
+installer records that root-owned release source once so the unprivileged app
+and privileged updater cannot silently disagree about where updates come from.
 
 Public artifacts are built from the token-free source with the matching
 open-source Swift toolchain and static Linux SDK, then packaged with
@@ -122,6 +135,8 @@ The current API surface is intentionally small:
 - `GET /api/movies/tracked/<provider>/<id>/releases`
 - `GET /api/downloads`
 - `POST /api/downloads`
+- `GET /api/settings/update`
+- `POST /api/settings/update`
 
 `CallupNewznab` builds Newznab television searches and normalizes XML results
 into provider-neutral release candidates. Credential-bearing NZB URLs never

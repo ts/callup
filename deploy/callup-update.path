@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for validated Callup update requests
+Documentation=https://github.com/ts/callup
+
+[Path]
+PathExists=/var/lib/callup/updates/request
+PathExists=/var/lib/callup/updates/request.processing
+Unit=callup-update.service
+
+[Install]
+WantedBy=multi-user.target

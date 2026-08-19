@@ -2,7 +2,7 @@
 
 Status: active
 Owner: ts
-Last updated: 2026-08-11
+Last updated: 2026-08-19
 
 ## Start here
 
@@ -18,6 +18,14 @@ continue without reconstructing the product decisions from chat.
   local macOS instance: Callup is being made distributable for other users,
   who do not share the owner’s computer. `/health` identifies the installed
   release and revision.
+- Settings exposes application update discovery and explicit installation.
+  Release discovery, semantic version policy, and request coordination live in
+  `CallupUpdates`, not in Vapor routes. The unprivileged app can only request
+  the newest validated release; a narrowly scoped root-owned systemd updater
+  verifies and stages it, restarts Callup, checks `/health`, and rolls back the
+  binary and release identity if the new version does not become healthy. The
+  Proxmox/install commands remain bootstrap and recovery paths rather than the
+  intended recurring user experience.
 - Browser UI performs one mixed TVMaze show and TMDB movie search and persists
   shows and movies in one minimal tracked view. It labels each tracked show as
   ended or with its next announced air date and displays seasons and episodes.
@@ -74,7 +82,7 @@ continue without reconstructing the product decisions from chat.
   bearer token. Tracking returns after its local write and optimistically
   hydrates detail metadata in the background. Tracked movies expose cached,
   identity-checked, preference-ranked Newznab matches but cannot yet submit one.
-- Sixty-seven tests pass.
+- Seventy-eight tests pass.
 - The running `sqlite-cache` build introduces the first application-store slice
   with one explicitly confirmed manual SABnzbd submission seam. No automated
   recommendation queueing, media renaming, or library management exists yet.
@@ -287,6 +295,10 @@ Unified acquisition service ----------------------- SQLite
 - `DownloadClient`: submits to SABnzbd and reconciles job state.
 - `Persistence`: SQLite repositories and migrations.
 - `Web`: the single guided workflow and status views.
+- `Updates`: release discovery, version/channel policy, and update request
+  coordination. A separate packaged systemd helper owns the privileged
+  install/restart/rollback boundary; the web process never runs as root and
+  never replaces its own executable.
 
 Provider responses must be stored separately from domain models so replacing or
 adding a provider does not rewrite the product. Protocol boundaries should be
@@ -411,6 +423,9 @@ concepts; its human-facing preference types remain useful.
 
 ### Subsequent product capabilities
 
+- Optional automatic application updates, built on the same explicit update
+  coordinator and restricted system updater after manual updates have proven
+  reliable.
 - A full TVmaze schedule and calendar for tracked shows.
 - Named profiles and per-request overrides using the same transparent policy
   model.

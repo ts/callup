@@ -78,6 +78,14 @@ let indexHTML = #"""
     .backup-choice { display: flex; align-items: center; gap: 9px; color: #b7c4d4; }
     .backup-file { max-width: 100%; color: #b7c4d4; }
     .backup-status { min-height: 20px; margin: 0; color: #91a0b3; }
+    .update-panel { display: grid; gap: 14px; max-width: 720px; padding: 18px; }
+    .update-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .update-heading h3 { margin: 0; }
+    .update-status { color: #91a0b3; font-size: .88rem; }
+    .update-status.available, .update-status.succeeded { color: #64d67c; }
+    .update-status.failed { color: #f0b95b; }
+    .update-detail { margin: 0; }
+    .update-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
     .series { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; padding: 14px; background: #131b26; border: 1px solid #263244; border-radius: 13px; }
     .poster { width: 72px; height: 102px; object-fit: cover; background: #202b3a; border-radius: 8px; }
     .series-copy { display: grid; gap: 7px; min-width: 0; }
@@ -207,6 +215,7 @@ let indexHTML = #"""
     </div>
     <div class="view-toggle settings-tabs" role="tablist" aria-label="Settings sections">
       <button id="settings-configuration-tab" type="button" role="tab" data-settings-tab="configuration" aria-controls="settings-configuration" aria-selected="true">Configuration</button>
+      <button id="settings-updates-tab" type="button" role="tab" data-settings-tab="updates" aria-controls="settings-updates" aria-selected="false">Updates</button>
       <button id="settings-data-tab" type="button" role="tab" data-settings-tab="data" aria-controls="settings-data" aria-selected="false">Data</button>
     </div>
     <div id="settings-configuration" role="tabpanel" aria-labelledby="settings-configuration-tab" data-settings-panel="configuration">
@@ -283,6 +292,19 @@ let indexHTML = #"""
         </a>
         <p class="notice muted">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
       </div>
+    </div>
+    <div id="settings-updates" class="update-panel connection-form" role="tabpanel" aria-labelledby="settings-updates-tab" data-settings-panel="updates" hidden>
+      <div class="update-heading">
+        <h3>Application updates</h3>
+        <span id="update-status" class="update-status">Checking…</span>
+      </div>
+      <p id="update-detail" class="update-detail muted">Checking the Callup release channel.</p>
+      <div class="update-actions">
+        <button id="update-check" class="secondary" type="button">Check again</button>
+        <button id="update-install" type="button" hidden>Update now</button>
+        <a id="update-notes" class="ghost" target="_blank" rel="noreferrer" hidden>Release notes</a>
+      </div>
+      <span class="field-note">Updates are verified, staged by Callup’s restricted system updater, and rolled back if the new release does not become healthy.</span>
     </div>
     <div id="settings-data" class="backup-panel connection-form" role="tabpanel" aria-labelledby="settings-data-tab" data-settings-panel="data" hidden>
       <div>
@@ -433,6 +455,11 @@ const backupExport = document.querySelector('#backup-export');
 const backupFile = document.querySelector('#backup-file');
 const backupRestore = document.querySelector('#backup-restore');
 const backupStatus = document.querySelector('#backup-status');
+const updateStatus = document.querySelector('#update-status');
+const updateDetail = document.querySelector('#update-detail');
+const updateCheck = document.querySelector('#update-check');
+const updateInstall = document.querySelector('#update-install');
+const updateNotes = document.querySelector('#update-notes');
 const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
 const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const runtime = document.querySelector('#runtime');
@@ -477,6 +504,10 @@ let includedEpisodes = new Set();
 let displayedSeriesKey = null;
 let displayedMovie = null;
 let activeDownloadClientKind = null;
+let availableUpdate = null;
+let updatePoll = null;
+let waitingForUpdate = false;
+let updatePollAttempts = 0;
 const downloadSubmissions = new Map();
 let onDiskEpisodeKeys = new Set();
 const onDiskEpisodeFiles = new Map();
@@ -486,6 +517,7 @@ renderRoute();
 loadRuntime();
 loadTrackedMedia();
 loadConnections();
+loadUpdates();
 loadDownloads();
 setInterval(loadDownloads, 15_000);
 
@@ -555,7 +587,7 @@ function setSearchFilter(filter) {
 }
 
 function setSettingsTab(tab) {
-  const selectedTab = tab === 'data' ? 'data' : 'configuration';
+  const selectedTab = ['updates', 'data'].includes(tab) ? tab : 'configuration';
   for (const button of settingsTabButtons) {
     const selected = button.dataset.settingsTab === selectedTab;
     button.setAttribute('aria-selected', String(selected));
@@ -563,6 +595,99 @@ function setSettingsTab(tab) {
   for (const panel of settingsPanels) {
     panel.hidden = panel.dataset.settingsPanel !== selectedTab;
   }
+}
+
+updateCheck.addEventListener('click', () => loadUpdates(true));
+updateInstall.addEventListener('click', requestUpdate);
+
+async function loadUpdates(refresh = false) {
+  if (refresh) setBusy(updateCheck, true, 'Checking…');
+  try {
+    const data = await requestJSON(`/api/settings/update${refresh ? '?refresh=true' : ''}`);
+    renderUpdateStatus(data);
+  } catch (error) {
+    updateStatus.textContent = 'Unavailable';
+    updateStatus.className = 'update-status failed';
+    updateDetail.textContent = error.message;
+    if (waitingForUpdate) scheduleUpdatePoll();
+  } finally {
+    if (refresh) setBusy(updateCheck, false, 'Check again');
+  }
+}
+
+function renderUpdateStatus(data) {
+  availableUpdate = data.availableRelease || null;
+  updateStatus.className = 'update-status';
+  updateNotes.hidden = !availableUpdate;
+  if (availableUpdate) updateNotes.href = availableUpdate.releaseURL;
+  const active = ['requested', 'installing'].includes(data.progress?.state);
+  waitingForUpdate = active;
+  if (!active) updatePollAttempts = 0;
+  updateInstall.hidden = !availableUpdate || !data.updaterReady || active;
+  updateInstall.textContent = availableUpdate ? `Update to ${availableUpdate.version}` : 'Update now';
+
+  if (active) {
+    updateStatus.textContent = data.progress.state === 'installing' ? 'Installing…' : 'Queued…';
+    updateDetail.textContent = data.progress.message;
+    scheduleUpdatePoll();
+  } else if (data.progress?.state === 'rolledBack' || data.progress?.state === 'failed') {
+    updateStatus.textContent = data.progress.state === 'rolledBack' ? 'Rolled back' : 'Update failed';
+    updateStatus.classList.add('failed');
+    updateDetail.textContent = data.progress.message;
+  } else if (availableUpdate) {
+    updateStatus.textContent = 'Update available';
+    updateStatus.classList.add('available');
+    updateDetail.textContent = `${availableUpdate.name} is available. You are running ${data.currentVersion}.`;
+  } else if (data.checkError) {
+    updateStatus.textContent = 'Check unavailable';
+    updateStatus.classList.add('failed');
+    updateDetail.textContent = data.checkError;
+  } else {
+    updateStatus.textContent = 'Up to date';
+    updateStatus.classList.add('succeeded');
+    updateDetail.textContent = data.progress?.state === 'succeeded'
+      ? data.progress.message
+      : `You are running the newest release${data.currentVersion ? `, ${data.currentVersion}` : ''}.`;
+  }
+
+  if (!data.updaterReady && availableUpdate) {
+    updateInstall.hidden = true;
+    updateDetail.textContent += ' Install one current release through the existing system installer to enable in-app updates.';
+  }
+}
+
+async function requestUpdate() {
+  if (!availableUpdate) return;
+  const version = availableUpdate.version;
+  if (!window.confirm(`Update Callup to ${version}? The service will restart briefly.`)) return;
+  waitingForUpdate = true;
+  updatePollAttempts = 0;
+  setBusy(updateInstall, true, 'Queueing…');
+  try {
+    const data = await requestJSON('/api/settings/update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({version, confirm: true})
+    });
+    renderUpdateStatus(data);
+  } catch (error) {
+    updateStatus.textContent = 'Could not update';
+    updateStatus.className = 'update-status failed';
+    updateDetail.textContent = error.message;
+    scheduleUpdatePoll();
+  } finally {
+    setBusy(updateInstall, false, `Update to ${version}`);
+  }
+}
+
+function scheduleUpdatePoll() {
+  if (updatePoll || !waitingForUpdate || updatePollAttempts >= 90) return;
+  updatePollAttempts += 1;
+  updatePoll = window.setTimeout(async () => {
+    updatePoll = null;
+    await loadUpdates();
+    await loadRuntime();
+  }, 2_000);
 }
 
 for (const link of routeLinks) {

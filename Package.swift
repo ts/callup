@@ -17,6 +17,7 @@ let package = Package(
         .library(name: "CallupAutomation", targets: ["CallupAutomation"]),
         .library(name: "CallupNewznab", targets: ["CallupNewznab"]),
         .library(name: "CallupDownloadClients", targets: ["CallupDownloadClients"]),
+        .library(name: "CallupUpdates", targets: ["CallupUpdates"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", exact: "4.121.4"),
@@ -33,6 +34,7 @@ let package = Package(
         ),
         .target(name: "CallupNewznab", dependencies: ["CallupCore"]),
         .target(name: "CallupDownloadClients", dependencies: ["CallupCore"]),
+        .target(name: "CallupUpdates"),
         .target(
             name: "CallupAutomation",
             dependencies: ["CallupCore", "CallupDownloadClients", "CallupPersistence"]
@@ -53,6 +55,7 @@ let package = Package(
                 "CallupPersistence",
                 "CallupTVMaze",
                 "CallupTMDB",
+                "CallupUpdates",
                 .product(name: "Vapor", package: "vapor"),
             ]
         ),
@@ -82,5 +85,6 @@ let package = Package(
             name: "CallupTMDBTests",
             dependencies: ["CallupCore", "CallupTMDB"]
         ),
+        .testTarget(name: "CallupUpdatesTests", dependencies: ["CallupUpdates"]),
     ]
 )

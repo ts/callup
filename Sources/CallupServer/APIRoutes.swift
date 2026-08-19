@@ -5,6 +5,7 @@ import CallupNewznab
 import CallupPersistence
 import CallupTMDB
 import CallupTVMaze
+import CallupUpdates
 import Foundation
 import Vapor
 
@@ -18,6 +19,7 @@ extension CallupServer {
         downloadClientProbe: DownloadClientProbe,
         sabnzbdClient: SABnzbdClient,
         library: LibraryInventory,
+        updates: CallupUpdateService,
         revision: String
     ) {
         application.get("api", "search") { request async throws -> MediaSearchResponse in
@@ -509,6 +511,31 @@ extension CallupServer {
 
         application.get("api", "settings", "connections") { _ async -> ConnectionSettingsResponse in
             await connectionResponse(using: connectionSettings)
+        }
+
+        application.get("api", "settings", "update") { request async -> CallupUpdateStatus in
+            let refresh = request.query[Bool.self, at: "refresh"] ?? false
+            return await updates.status(forceRefresh: refresh)
+        }
+
+        application.post("api", "settings", "update") { request async throws -> CallupUpdateStatus in
+            let input = try request.content.decode(RequestUpdateRequest.self)
+            guard input.confirm else {
+                throw Abort(.badRequest, reason: "Confirm before installing an application update.")
+            }
+            do {
+                return try await updates.request(version: input.version)
+            } catch CallupUpdateError.currentVersionUnknown {
+                throw Abort(.conflict, reason: "This build cannot determine its installed release.")
+            } catch CallupUpdateError.updaterUnavailable {
+                throw Abort(.conflict, reason: "The system updater is not installed yet.")
+            } catch CallupUpdateError.invalidVersion {
+                throw Abort(.badRequest, reason: "That release version is invalid.")
+            } catch CallupUpdateError.releaseUnavailable {
+                throw Abort(.conflict, reason: "That release is no longer the available update.")
+            } catch CallupUpdateError.updateInProgress {
+                throw Abort(.conflict, reason: "An application update is already in progress.")
+            }
         }
 
         application.get("api", "settings", "backup") { request async throws -> Response in
