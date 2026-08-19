@@ -53,6 +53,8 @@ let indexHTML = #"""
     .tracked-results.list-view .series-actions { grid-area: actions; flex-wrap: nowrap; justify-content: flex-end; }
     .inline-movie-releases { grid-column: 1 / -1; padding: 14px; background: #0e151f; border-top: 1px solid #263244; }
     .inline-movie-releases .release-summary { margin-bottom: 11px; }
+    .inline-series-seasons { grid-column: 1 / -1; padding: 14px; background: #0e151f; border-top: 1px solid #263244; }
+    .inline-series-seasons > h2 { margin: 0; }
     .connections { padding: 20px 0 4px; }
     .connections-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .connections-heading h2 { margin: 0; }
@@ -492,6 +494,7 @@ const movieCodec = document.querySelector('#movie-codec');
 const movieReleaseSummary = document.querySelector('#movie-release-summary');
 const movieReleaseResults = document.querySelector('#movie-release-results');
 const lineupSection = document.querySelector('#lineup-section');
+const lineupPage = document.querySelector('#lineup-page');
 const selectedTitle = document.querySelector('#selected-title');
 const lineupDescription = document.querySelector('#lineup-description');
 const seasons = document.querySelector('#seasons');
@@ -1550,7 +1553,12 @@ function isFutureDate(value) {
 }
 
 async function loadSeries(series, button) {
-  if (window.location.pathname !== '/lineup') navigate('/lineup');
+  const inline = window.location.pathname === '/lineup';
+  if (!inline) {
+    navigate('/lineup');
+    lineupPage.append(lineupSection);
+    lineupSection.classList.remove('inline-series-seasons');
+  }
   setBusy(button, true, 'Loading…');
   status.textContent = '';
   movieReleaseSection.hidden = true;
@@ -1567,7 +1575,14 @@ async function loadSeries(series, button) {
     for (const match of data.onDiskEpisodes || []) {
       onDiskEpisodeFiles.set(providerKey(match.episodeID), match.libraryFiles || []);
     }
-    renderSeasons(series, data.seasons, canChoose);
+    renderSeasons(series, data.seasons, canChoose, !inline);
+    if (inline) {
+      const card = button.closest('.series');
+      if (card) {
+        lineupSection.classList.add('inline-series-seasons');
+        card.append(lineupSection);
+      }
+    }
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -1575,7 +1590,7 @@ async function loadSeries(series, button) {
   }
 }
 
-function renderSeasons(series, items, canChoose) {
+function renderSeasons(series, items, canChoose, scrollToPanel = true) {
   displayedSeasons.splice(0, displayedSeasons.length, ...items);
   displayedSeriesKey = seriesKey(series);
   selectedTitle.textContent = `${series.title} lineup`;
@@ -1684,7 +1699,7 @@ function renderSeasons(series, items, canChoose) {
   }
   applyEpisodeDownloadStates([...downloadSubmissions.values()]);
   lineupSection.hidden = false;
-  lineupSection.scrollIntoView({behavior: 'smooth', block: 'start'});
+  if (scrollToPanel) lineupSection.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 
 function renderDownloadSettings(series) {

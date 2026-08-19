@@ -33,4 +33,4 @@ curl -fsSL "${base_url}/${archive}.sha256" -o "${temporary_directory}/${archive}
 (cd "$temporary_directory" && sha256sum -c "${archive}.sha256")
 tar -C "$temporary_directory" -xzf "${temporary_directory}/${archive}"
 CALLUP_UPDATE_REPOSITORY=$repository \
-  exec "${temporary_directory}/callup-${version}-linux-${architecture}/install.sh"
+  "${temporary_directory}/callup-${version}-linux-${architecture}/install.sh"
