@@ -102,7 +102,8 @@ Open <http://localhost:8484>. The health endpoint is at `/health`.
 The interface has bookmarkable top-level views at `/`, `/lineup`,
 `/downloads`, and `/settings`. Navigation between them stays inside the live
 page. Lineup ordering is calculated server-side; `/lineup?sort=nextAiring`,
-`lastDownloaded`, and `title` are supported.
+`lastDownloaded`, and `title` are supported. The Lineup can also be filtered
+with `kind=movies` or `kind=shows`.
 
 The live app runs as a macOS LaunchAgent independently of an active Codex task.
 [`WORKFLOW.md`](WORKFLOW.md) documents the internals when troubleshooting is

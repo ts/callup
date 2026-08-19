@@ -60,7 +60,7 @@ let indexHTML = #"""
     .utility-panel { padding: 20px 0 4px; }
     .utility-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .utility-heading h2 { margin: 0; }
-    .lineup-controls { display: flex; align-items: end; gap: 10px; }
+    .lineup-controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: 10px; }
     .lineup-sort { width: min(100%, 190px); }
     .connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .connection-form { display: grid; gap: 13px; padding: 18px; }
@@ -161,6 +161,8 @@ let indexHTML = #"""
       .search-form { flex-direction: column; }
       .connection-grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; }
+      #lineup-page > .utility-heading { align-items: stretch; flex-direction: column; }
+      .lineup-controls { justify-content: flex-start; }
       .tracked-results.list-view .series-copy { grid-template-columns: 1fr; grid-template-areas: "heading" "meta" "state" "actions"; gap: 6px; }
       .tracked-results.list-view .series-actions { justify-content: flex-start; margin-top: 3px; }
       .episode { grid-template-columns: 66px 1fr; }
@@ -373,6 +375,11 @@ let indexHTML = #"""
         <p class="muted">Everything you want, ordered by what matters now.</p>
       </div>
       <div class="lineup-controls">
+        <div class="view-toggle" role="group" aria-label="Filter Lineup">
+          <button type="button" data-lineup-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-lineup-filter="movies" aria-pressed="false">Movies</button>
+          <button type="button" data-lineup-filter="shows" aria-pressed="false">Shows</button>
+        </div>
         <div class="view-toggle" role="group" aria-label="Lineup view">
           <button type="button" data-tracked-view="cards" aria-pressed="true">Cards</button>
           <button type="button" data-tracked-view="list" aria-pressed="false">List</button>
@@ -436,6 +443,7 @@ const buildBadge = document.querySelector('#build-badge');
 const trackedEmpty = document.querySelector('#tracked-empty');
 const trackedResults = document.querySelector('#tracked-results');
 const trackedViewButtons = document.querySelectorAll('[data-tracked-view]');
+const lineupFilterButtons = document.querySelectorAll('[data-lineup-filter]');
 const lineupSort = document.querySelector('#lineup-sort');
 const downloadsSection = document.querySelector('#downloads-section');
 const downloadsEmpty = document.querySelector('#downloads-empty');
@@ -457,6 +465,7 @@ const seasons = document.querySelector('#seasons');
 const trackedSeries = new Map();
 const trackedMovies = new Map();
 let lineupOrder = [];
+let activeLineupFilter = 'all';
 let lastSearchResults = [];
 let activeSearchFilter = 'all';
 const displayedSeasons = [];
@@ -491,6 +500,10 @@ for (const button of trackedViewButtons) {
   button.addEventListener('click', () => setTrackedView(button.dataset.trackedView));
 }
 
+for (const button of lineupFilterButtons) {
+  button.addEventListener('click', () => setLineupFilter(button.dataset.lineupFilter));
+}
+
 for (const button of searchFilterButtons) {
   button.addEventListener('click', () => setSearchFilter(button.dataset.searchFilter));
 }
@@ -512,6 +525,21 @@ function setTrackedView(view) {
   try {
     localStorage.setItem('callup.trackedView', selectedView);
   } catch {}
+}
+
+function setLineupFilter(filter, updateURL = true) {
+  activeLineupFilter = ['movies', 'shows'].includes(filter) ? filter : 'all';
+  for (const button of lineupFilterButtons) {
+    button.setAttribute('aria-pressed', String(button.dataset.lineupFilter === activeLineupFilter));
+  }
+  if (updateURL) {
+    const url = new URL(window.location.href);
+    if (activeLineupFilter === 'all') url.searchParams.delete('kind');
+    else url.searchParams.set('kind', activeLineupFilter);
+    history.replaceState({}, '', `${url.pathname}${url.search}`);
+    lineupSection.hidden = true;
+  }
+  renderTrackedMedia();
 }
 
 for (const button of settingsTabButtons) {
@@ -558,9 +586,11 @@ function renderRoute() {
     : window.location.pathname === '/downloads' ? 'downloads'
     : window.location.pathname === '/lineup' ? 'lineup' : 'home';
   const requestedSort = new URLSearchParams(window.location.search).get('sort');
+  const requestedKind = new URLSearchParams(window.location.search).get('kind');
   lineupSort.value = ['title', 'nextAiring', 'lastDownloaded'].includes(requestedSort)
     ? requestedSort
     : 'nextAiring';
+  setLineupFilter(requestedKind, false);
   for (const view of views) view.hidden = view.dataset.view !== route;
   for (const link of routeLinks) {
     if (link.closest('.topbar-actions')) {
@@ -1113,7 +1143,14 @@ function renderTrackedMedia(order = lineupOrder) {
   const items = (order || []).map(entry => entry.kind === 'televisionSeries'
     ? {kind: entry.kind, item: trackedSeries.get(providerKey(entry.id))}
     : {kind: entry.kind, item: trackedMovies.get(providerKey(entry.id))}
-  ).filter(entry => entry.item);
+  ).filter(entry => entry.item).filter(entry => activeLineupFilter === 'all'
+    || (activeLineupFilter === 'shows' && entry.kind === 'televisionSeries')
+    || (activeLineupFilter === 'movies' && entry.kind === 'movie'));
+  trackedEmpty.textContent = activeLineupFilter === 'movies'
+    ? 'No movies in your Lineup yet.'
+    : activeLineupFilter === 'shows'
+      ? 'No shows in your Lineup yet.'
+      : 'Nothing in your Lineup yet.';
   trackedEmpty.hidden = items.length !== 0;
   for (const tracked of items) {
     const isTelevision = tracked.kind === 'televisionSeries';
