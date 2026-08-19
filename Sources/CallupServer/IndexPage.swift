@@ -174,8 +174,11 @@ let indexHTML = #"""
       .lineup-controls { justify-content: flex-start; }
       .tracked-results.list-view .series-copy { grid-template-columns: 1fr; grid-template-areas: "heading" "meta" "state" "actions"; gap: 6px; }
       .tracked-results.list-view .series-actions { justify-content: flex-start; margin-top: 3px; }
-      .episode { grid-template-columns: 66px 1fr; }
-      .episode.selectable { grid-template-columns: 18px 66px 1fr; }
+      .episode { grid-template-columns: 66px minmax(0, 1fr); gap: 8px; }
+      .episode.selectable { grid-template-columns: 18px 66px minmax(0, 1fr); }
+      .episode-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+      .episode-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .episode-download-state { flex: 0 0 auto; margin-left: 0; padding: 2px 6px; font-size: .72rem; }
       .episode .meta { grid-column: 2; }
       .episode.selectable .meta { grid-column: 3; }
       .episode .episode-library-traits { grid-column: 2; }
@@ -1639,7 +1642,10 @@ function renderSeasons(series, items, canChoose) {
         : `S${pad(episode.seasonNumber)}E${pad(episode.episodeNumber)}`;
       const title = document.createElement('span');
       title.className = 'episode-title';
-      title.textContent = episode.title;
+      const titleText = document.createElement('span');
+      titleText.className = 'episode-title-text';
+      titleText.textContent = episode.title;
+      title.append(titleText);
       const libraryTraits = document.createElement('div');
       libraryTraits.className = 'episode-library-traits';
       const meta = document.createElement('span');
