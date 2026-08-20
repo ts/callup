@@ -32,6 +32,21 @@ private struct WebAssets {
     }
 
     private static func load(_ name: String, extension fileExtension: String) throws -> WebAsset {
+        let url = try resourceURL(name, extension: fileExtension)
+        return WebAsset(content: try String(contentsOf: url, encoding: .utf8))
+    }
+
+    private static func resourceURL(_ name: String, extension fileExtension: String) throws -> URL {
+        #if os(Linux)
+        let executable = URL(fileURLWithPath: "/proc/self/exe").resolvingSymlinksInPath()
+        let url = executable
+            .deletingLastPathComponent()
+            .appending(path: "Callup_CallupServer.resources/Web/\(name).\(fileExtension)")
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            throw WebAssetError.missing(url.path)
+        }
+        return url
+        #else
         guard let url = Bundle.module.url(
             forResource: name,
             withExtension: fileExtension,
@@ -39,7 +54,8 @@ private struct WebAssets {
         ) else {
             throw WebAssetError.missing("\(name).\(fileExtension)")
         }
-        return WebAsset(content: try String(contentsOf: url, encoding: .utf8))
+        return url
+        #endif
     }
 }
 
@@ -53,8 +69,14 @@ private struct WebAsset {
     }
 }
 
-private enum WebAssetError: Error {
+private enum WebAssetError: Error, CustomStringConvertible {
     case missing(String)
+
+    var description: String {
+        switch self {
+        case let .missing(path): "Missing web asset: \(path)"
+        }
+    }
 }
 
 private func indexResponse(_ index: String) -> Response {

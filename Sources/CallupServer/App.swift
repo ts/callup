@@ -11,23 +11,19 @@ import Vapor
 
 @main
 enum CallupServer {
-    static func main() async throws {
-        var environment = try Environment.detect()
-        try LoggingSystem.bootstrap(from: &environment)
-        let application = try await Application.make(environment)
-
+    static func main() async {
         do {
+            var environment = try Environment.detect()
+            try LoggingSystem.bootstrap(from: &environment)
+            let application = try await Application.make(environment)
             let store = try await configuredStore()
             let connectionSettings = try configuredConnectionSettings()
             try configure(application, store: store, connectionSettings: connectionSettings)
             try await application.execute()
-        } catch {
-            application.logger.report(error: error)
             try await application.asyncShutdown()
-            throw error
+        } catch {
+            print("Callup failed to start: \(error)")
         }
-
-        try await application.asyncShutdown()
     }
 
     private static func configure(
