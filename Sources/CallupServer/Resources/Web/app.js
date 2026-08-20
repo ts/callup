@@ -88,6 +88,18 @@ const downloadSubmissions = new Map();
 let onDiskEpisodeKeys = new Set();
 const onDiskEpisodeFiles = new Map();
 let qualityDefaults = null;
+const RESOLUTION_OPTIONS = [
+  ['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['any', 'Any']
+];
+const VIDEO_CODEC_OPTIONS = [
+  ['HEVC', 'HEVC'], ['AVC', 'AVC'], ['AV1', 'AV1'], ['MPEG-2', 'MPEG-2'], ['any', 'Any']
+];
+const EPISODE_MONITORING_OPTIONS = [
+  ['future', 'Future'], ['all', 'All'], ['none', 'None']
+];
+const DOWNLOAD_STATE_RANK = {
+  blocked: 0, sending: 1, snatched: 2, downloading: 3, downloaded: 4
+};
 
 setTrackedView(loadTrackedView());
 renderRoute();
@@ -243,8 +255,7 @@ async function requestUpdate() {
   try {
     const data = await requestJSON('/api/settings/update', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({version, confirm: true})
+      json: {version, confirm: true}
     });
     renderUpdateStatus(data);
   } catch (error) {
@@ -340,25 +351,24 @@ for (const form of qualityForms) {
     event.preventDefault();
     const button = form.querySelector('button[type="submit"]');
     const key = form.dataset.qualityDefault;
-    setBusy(button, true, 'Saving…');
-    status.textContent = '';
-    try {
-      qualityDefaults[key] = {
-        preferredResolution: form.querySelector('[data-quality-resolution]').value,
-        preferredVideoCodec: form.querySelector('[data-quality-codec]').value
-      };
-      qualityDefaults = await requestJSON('/api/quality', {
-        method: 'PUT',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify(qualityDefaults)
-      });
-      renderQualityDefaults();
-    } catch (error) {
-      status.textContent = error.message;
-      await loadQuality();
-    } finally {
-      setBusy(button, false, key === 'television' ? 'Save TV default' : 'Save movie default');
-    }
+    const saved = await runAction(
+      button,
+      'Saving…',
+      key === 'television' ? 'Save TV default' : 'Save movie default',
+      async () => {
+        qualityDefaults[key] = {
+          preferredResolution: form.querySelector('[data-quality-resolution]').value,
+          preferredVideoCodec: form.querySelector('[data-quality-codec]').value
+        };
+        qualityDefaults = await requestJSON('/api/quality', {
+          method: 'PUT',
+          json: qualityDefaults
+        });
+        renderQualityDefaults();
+        return true;
+      }
+    );
+    if (!saved) await loadQuality();
   });
 }
 
@@ -479,7 +489,6 @@ function renderDownloads(items, groups = null) {
 }
 
 function applyEpisodeDownloadStates(items) {
-  const stateRank = {blocked: 0, sending: 1, snatched: 2, downloading: 3, downloaded: 4};
   const episodeStates = new Map();
   for (const submission of items) {
     const episodeIDs = (submission.acquisitionContext?.targets || [])
@@ -488,7 +497,8 @@ function applyEpisodeDownloadStates(items) {
     for (const episodeID of episodeIDs) {
       const key = providerKey(episodeID);
       const current = episodeStates.get(key);
-      if (!current || (stateRank[submission.state] ?? 0) > (stateRank[current] ?? 0)) {
+      if (!current || (DOWNLOAD_STATE_RANK[submission.state] ?? 0)
+          > (DOWNLOAD_STATE_RANK[current] ?? 0)) {
         episodeStates.set(key, submission.state);
       }
     }
@@ -507,15 +517,6 @@ function applyEpisodeDownloadStates(items) {
     badge.className = 'episode-download-state';
     badge.textContent = downloadStateLabel(episodeState);
     row.querySelector('.episode-state').append(badge);
-  }
-  for (const section of document.querySelectorAll('.season')) {
-    const seasonCheckbox = section.querySelector('[data-season-choice]');
-    if (!seasonCheckbox) continue;
-    const episodeCheckboxes = [...section.querySelectorAll('[data-episode-key]')];
-    const checkedCount = episodeCheckboxes.filter(input => input.checked).length;
-    seasonCheckbox.checked = episodeCheckboxes.length > 0
-      && checkedCount === episodeCheckboxes.length;
-    seasonCheckbox.indeterminate = checkedCount > 0 && checkedCount < episodeCheckboxes.length;
   }
   applyEpisodeLibraryStates();
 }
@@ -540,6 +541,10 @@ function applyEpisodeLibraryStates() {
       row.querySelector('.meta').append(details);
     }
   }
+  updateSeasonCheckboxStates();
+}
+
+function updateSeasonCheckboxStates() {
   for (const section of document.querySelectorAll('.season')) {
     const seasonCheckbox = section.querySelector('[data-season-choice]');
     if (!seasonCheckbox) continue;
@@ -562,85 +567,74 @@ function downloadStateLabel(state) {
 }
 
 function movieDownloadState(movie) {
-  const stateRank = {blocked: 0, sending: 1, snatched: 2, downloading: 3, downloaded: 4};
   let strongest = null;
   for (const submission of downloadSubmissions.values()) {
     const matchesMovie = (submission.acquisitionContext?.targets || []).some(target =>
       target.media.kind === 'movie' && providerKey(target.media.id) === providerKey(movie.id)
     );
     if (!matchesMovie) continue;
-    if (strongest === null || (stateRank[submission.state] ?? 0) > (stateRank[strongest] ?? 0)) {
+    if (strongest === null || (DOWNLOAD_STATE_RANK[submission.state] ?? 0)
+        > (DOWNLOAD_STATE_RANK[strongest] ?? 0)) {
       strongest = submission.state;
     }
   }
   return strongest;
 }
 
-indexerForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  setBusy(indexerSave, true, 'Saving…');
-  status.textContent = '';
-  try {
-    const data = await requestJSON('/api/settings/connections/indexer', {
-      method: 'PUT',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({name: indexerName.value, endpoint: indexerEndpoint.value, apiKey: indexerKey.value || null})
-    });
-    indexerKey.value = '';
-    renderConnections(data);
-    await loadRuntime();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(indexerSave, false, 'Save indexer');
-  }
+bindConnectionForm({
+  form: indexerForm,
+  button: indexerSave,
+  busyLabel: 'Saving…',
+  idleLabel: 'Save indexer',
+  url: '/api/settings/connections/indexer',
+  payload: () => ({
+    name: indexerName.value,
+    endpoint: indexerEndpoint.value,
+    apiKey: indexerKey.value || null
+  }),
+  clearSecret: () => { indexerKey.value = ''; }
 });
 
-tmdbForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  setBusy(tmdbSave, true, 'Testing…');
-  status.textContent = '';
-  try {
-    const data = await requestJSON('/api/settings/connections/metadata/tmdb', {
-      method: 'PUT',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({secret: tmdbSecret.value || null})
-    });
-    tmdbSecret.value = '';
-    renderConnections(data);
-    await loadRuntime();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(tmdbSave, false, 'Connect TMDB');
-  }
+bindConnectionForm({
+  form: tmdbForm,
+  button: tmdbSave,
+  busyLabel: 'Testing…',
+  idleLabel: 'Connect TMDB',
+  url: '/api/settings/connections/metadata/tmdb',
+  payload: () => ({secret: tmdbSecret.value || null}),
+  clearSecret: () => { tmdbSecret.value = ''; }
 });
 
-downloadClientForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  setBusy(downloadClientSave, true, 'Testing…');
-  status.textContent = '';
-  try {
-    const data = await requestJSON('/api/settings/connections/download-client', {
-      method: 'PUT',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({
-        kind: downloadClientKind.value,
-        endpoint: downloadClientEndpoint.value,
-        username: downloadClientUsername.value || null,
-        secret: downloadClientSecret.value || null
-      })
-    });
-    downloadClientSecret.value = '';
-    renderConnections(data);
-    await loadRuntime();
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    applyDownloadClientKind();
-    downloadClientSave.disabled = false;
-  }
+bindConnectionForm({
+  form: downloadClientForm,
+  button: downloadClientSave,
+  busyLabel: 'Testing…',
+  idleLabel: () => `Connect ${downloadClientKind.value === 'nzbget' ? 'NZBGet' : 'SABnzbd'}`,
+  url: '/api/settings/connections/download-client',
+  payload: () => ({
+    kind: downloadClientKind.value,
+    endpoint: downloadClientEndpoint.value,
+    username: downloadClientUsername.value || null,
+    secret: downloadClientSecret.value || null
+  }),
+  clearSecret: () => { downloadClientSecret.value = ''; },
+  after: applyDownloadClientKind
 });
+
+function bindConnectionForm({
+  form, button, busyLabel, idleLabel, url, payload, clearSecret, after
+}) {
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    await runAction(button, busyLabel, idleLabel, async () => {
+      const data = await requestJSON(url, {method: 'PUT', json: payload()});
+      clearSecret();
+      renderConnections(data);
+      await loadRuntime();
+    });
+    if (after) after();
+  });
+}
 
 indexerRemove.addEventListener('click', async () => {
   await removeConnection('/api/settings/connections/indexer');
@@ -691,11 +685,9 @@ backupRestore.addEventListener('click', async () => {
   const file = backupFile.files[0];
   if (!file) return;
   backupStatus.textContent = '';
-  let text;
   let backup;
   try {
-    text = await file.text();
-    backup = JSON.parse(text);
+    backup = JSON.parse(await file.text());
     if (backup.formatVersion !== 1 || !Array.isArray(backup.television)
         || !Array.isArray(backup.movies) || !Array.isArray(backup.downloads)) {
       throw new Error('That file is not a valid Callup backup.');
@@ -723,8 +715,7 @@ backupRestore.addEventListener('click', async () => {
   try {
     const summary = await requestJSON('/api/settings/backup/restore?confirm=true', {
       method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: text
+      json: backup
     });
     backupFile.value = '';
     backupRestore.disabled = true;
@@ -788,23 +779,17 @@ function formatBuild(revision) {
 
 form.addEventListener('submit', async event => {
   event.preventDefault();
-  setBusy(searchButton, true, 'Searching…');
-  status.textContent = '';
   lineupSection.hidden = true;
   movieReleaseSection.hidden = true;
   displayedMovie = null;
-  try {
+  await runAction(searchButton, 'Searching…', 'Search', async () => {
     const data = await requestJSON(`/api/search?q=${encodeURIComponent(query.value)}`);
     activeSearchFilter = 'all';
     renderResults(data.results);
     status.textContent = data.metadataIssues.length
       ? data.metadataIssues.map(issue => issue.message).join(' ')
       : data.results.length ? '' : 'No matching titles found.';
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(searchButton, false, 'Search');
-  }
+  });
 });
 
 function renderResults(items) {
@@ -826,65 +811,67 @@ function renderResults(items) {
   for (const item of visibleItems) {
     const media = item.media;
     const isTelevision = item.kind === 'televisionSeries';
-    const card = document.createElement('article');
-    card.className = 'series';
-
-    const image = document.createElement('img');
-    image.className = 'poster';
-    image.alt = '';
-    if (media.imageURL) image.src = media.imageURL;
-
-    const copy = document.createElement('div');
-    copy.className = 'series-copy';
-    const heading = document.createElement('div');
-    heading.className = 'media-heading';
-    const title = document.createElement('h3');
-    title.textContent = media.title;
-    const kind = document.createElement('span');
-    kind.className = 'media-kind';
-    kind.textContent = isTelevision ? 'Show' : 'Movie';
-    heading.append(title, kind);
-    const meta = document.createElement('p');
-    meta.className = 'meta';
-    meta.textContent = isTelevision
-      ? [media.premieredYear, media.network, media.status].filter(Boolean).join(' · ')
-      : [media.releaseYear].filter(Boolean).join(' · ');
-    copy.append(heading, meta);
-    const actions = document.createElement('div');
-    actions.className = 'series-actions';
+    const {card, copy, actions} = createMediaCard(
+      media,
+      isTelevision,
+      isTelevision
+        ? [media.premieredYear, media.network, media.status]
+        : [media.releaseYear]
+    );
     const isTracked = isTelevision
       ? trackedSeries.has(seriesKey(media))
       : trackedMovies.has(providerKey(media.id));
     if (isTelevision) {
-      const select = document.createElement('button');
-      select.className = 'secondary';
-      select.textContent = 'Show seasons';
-      select.addEventListener('click', () => loadSeries(media, select));
-      actions.append(select);
+      actions.append(actionButton('Show seasons', button => loadSeries(media, button)));
     } else if (isTracked) {
-      const matches = document.createElement('button');
-      matches.className = 'secondary';
-      matches.textContent = 'Find releases';
-      matches.addEventListener('click', () => openMovieReleases(media, matches));
-      actions.append(matches);
+      actions.append(actionButton('Find releases', button => openMovieReleases(media, button)));
     }
     actions.append(qualityOverrideControl(
       isTelevision ? 'Show quality' : 'Movie quality',
       {kind: isTelevision ? 'televisionSeries' : 'movie', id: media.id},
       []
     ));
-    const track = document.createElement('button');
-    track.textContent = isTracked ? 'Remove' : 'Add';
-    if (isTracked) track.className = 'secondary';
-    track.addEventListener('click', () => isTelevision
-      ? toggleTrackedSeries(media, track)
-      : toggleTrackedMovie(media, track)
-    );
-    actions.append(track);
+    actions.append(actionButton(isTracked ? 'Remove' : 'Add', button =>
+      toggleTrackedMedia(item.kind, media, button), isTracked ? 'secondary' : ''
+    ));
     copy.append(actions);
-    card.append(image, copy);
     results.append(card);
   }
+}
+
+function createMediaCard(media, isTelevision, metadata) {
+  const card = document.createElement('article');
+  card.className = 'series';
+  const image = document.createElement('img');
+  image.className = 'poster';
+  image.alt = '';
+  if (media.imageURL) image.src = media.imageURL;
+  const copy = document.createElement('div');
+  copy.className = 'series-copy';
+  const heading = document.createElement('div');
+  heading.className = 'media-heading';
+  const title = document.createElement('h3');
+  title.textContent = media.title;
+  const kind = document.createElement('span');
+  kind.className = 'media-kind';
+  kind.textContent = isTelevision ? 'Show' : 'Movie';
+  heading.append(title, kind);
+  const meta = document.createElement('p');
+  meta.className = 'meta';
+  meta.textContent = metadata.filter(Boolean).join(' · ');
+  const actions = document.createElement('div');
+  actions.className = 'series-actions';
+  copy.append(heading, meta);
+  card.append(image, copy);
+  return {card, copy, actions};
+}
+
+function actionButton(label, action, className = 'secondary') {
+  const button = document.createElement('button');
+  button.textContent = label;
+  button.className = className;
+  button.addEventListener('click', () => action(button));
+  return button;
 }
 
 async function loadTrackedMedia() {
@@ -920,27 +907,11 @@ function renderTrackedMedia(order = lineupOrder) {
     const isTelevision = tracked.kind === 'televisionSeries';
     const item = tracked.item;
     const media = isTelevision ? item.series : item.movie;
-    const card = document.createElement('article');
-    card.className = 'series';
-    const image = document.createElement('img');
-    image.className = 'poster';
-    image.alt = '';
-    if (media.imageURL) image.src = media.imageURL;
-    const copy = document.createElement('div');
-    copy.className = 'series-copy';
-    const heading = document.createElement('div');
-    heading.className = 'media-heading';
-    const title = document.createElement('h3');
-    title.textContent = media.title;
-    const kind = document.createElement('span');
-    kind.className = 'media-kind';
-    kind.textContent = isTelevision ? 'Show' : 'Movie';
-    heading.append(title, kind);
-    const meta = document.createElement('p');
-    meta.className = 'meta';
-    meta.textContent = isTelevision
-      ? [media.premieredYear, media.network].filter(Boolean).join(' · ')
-      : [media.releaseYear].filter(Boolean).join(' · ');
+    const {card, copy, actions} = createMediaCard(
+      media,
+      isTelevision,
+      isTelevision ? [media.premieredYear, media.network] : [media.releaseYear]
+    );
     const state = document.createElement('p');
     state.className = 'airing-status';
     if (isTelevision) {
@@ -970,106 +941,63 @@ function renderTrackedMedia(order = lineupOrder) {
       libraryFile.textContent = libraryFileLabel(item.libraryFiles);
       libraryFile.title = item.libraryFiles.map(file => file.relativePath).join('\n');
     }
-    const actions = document.createElement('div');
-    actions.className = 'series-actions';
     if (isTelevision) {
-      const select = document.createElement('button');
-      select.className = 'secondary';
-      select.textContent = 'Show seasons';
-      select.addEventListener('click', () => loadSeries(media, select));
-      actions.append(select);
+      actions.append(actionButton('Show seasons', button => loadSeries(media, button)));
     } else {
-      const matches = document.createElement('button');
-      matches.className = 'secondary';
-      matches.textContent = 'Find releases';
-      matches.addEventListener('click', () => openMovieReleases(media, matches));
-      actions.append(matches);
+      actions.append(actionButton('Find releases', button => openMovieReleases(media, button)));
     }
-    const remove = document.createElement('button');
-    remove.className = 'secondary';
-    remove.textContent = 'Remove';
-    remove.addEventListener('click', () => isTelevision
-      ? toggleTrackedSeries(media, remove)
-      : toggleTrackedMovie(media, remove)
-    );
-    actions.append(remove);
+    actions.append(actionButton('Remove', button => toggleTrackedMedia(
+      tracked.kind,
+      media,
+      button
+    )));
     const mediaState = document.createElement('div');
     mediaState.className = 'media-state';
     mediaState.append(state);
     if (libraryFile.textContent) mediaState.append(libraryFile);
-    copy.append(heading, meta, mediaState);
-    copy.append(actions);
-    card.append(image, copy);
+    copy.append(mediaState, actions);
     trackedResults.append(card);
   }
 }
 
-async function toggleTrackedSeries(series, button) {
-  const key = seriesKey(series);
-  const isTracked = trackedSeries.has(key);
-  setBusy(button, true, isTracked ? 'Removing…' : 'Adding…');
-  status.textContent = '';
-  try {
-    if (isTracked) {
-      await requestJSON(
-        `/api/tv/tracked/${encodeURIComponent(series.id.provider)}/${encodeURIComponent(series.id.value)}`,
-        {method: 'DELETE'}
-      );
-      trackedSeries.delete(key);
-      if (displayedSeriesKey === key) {
-        lineupSection.hidden = true;
-        displayedSeriesKey = null;
+async function toggleTrackedMedia(kind, media, button) {
+  const isTelevision = kind === 'televisionSeries';
+  const key = providerKey(media.id);
+  const isTracked = (isTelevision ? trackedSeries : trackedMovies).has(key);
+  await runAction(
+    button,
+    isTracked ? 'Removing…' : 'Adding…',
+    isTracked ? 'Remove' : 'Add',
+    async () => {
+      if (isTracked) {
+        await requestJSON(trackedMediaURL(kind, media), {method: 'DELETE'});
+        if (isTelevision && displayedSeriesKey === key) {
+          lineupSection.hidden = true;
+          displayedSeriesKey = null;
+        } else if (!isTelevision && displayedMovie
+            && providerKey(displayedMovie.id) === key) {
+          displayedMovie = null;
+          movieReleaseSection.hidden = true;
+        }
+      } else {
+        await requestJSON(isTelevision ? '/api/tv/tracked' : '/api/movies/tracked', {
+          method: 'POST',
+          json: isTelevision ? {series: media} : {movie: media}
+        });
       }
-    } else {
-      await requestJSON('/api/tv/tracked', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({series})
-      });
       await loadTrackedMedia();
+      renderResults(lastSearchResults);
     }
-    renderTrackedMedia();
-    renderResults(lastSearchResults);
-  } catch (error) {
-    status.textContent = error.message;
-    setBusy(button, false, isTracked ? 'Remove' : 'Add');
-  }
+  );
 }
 
-async function toggleTrackedMovie(movie, button) {
-  const key = providerKey(movie.id);
-  const isTracked = trackedMovies.has(key);
-  setBusy(button, true, isTracked ? 'Removing…' : 'Adding…');
-  status.textContent = '';
-  try {
-    if (isTracked) {
-      await requestJSON(
-        `/api/movies/tracked/${encodeURIComponent(movie.id.provider)}/${encodeURIComponent(movie.id.value)}`,
-        {method: 'DELETE'}
-      );
-      trackedMovies.delete(key);
-      if (displayedMovie && providerKey(displayedMovie.id) === key) {
-        displayedMovie = null;
-        movieReleaseSection.hidden = true;
-      }
-    } else {
-      const tracked = await requestJSON('/api/movies/tracked', {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({movie})
-      });
-      trackedMovies.set(key, tracked);
-    }
-    renderTrackedMedia();
-    renderResults(lastSearchResults);
-  } catch (error) {
-    status.textContent = error.message;
-    setBusy(button, false, isTracked ? 'Remove' : 'Add');
-  }
+function trackedMediaURL(kind, media) {
+  const resource = kind === 'televisionSeries' ? 'tv' : 'movies';
+  return `/api/${resource}/tracked/${encodeURIComponent(media.id.provider)}/${encodeURIComponent(media.id.value)}`;
 }
 
 function trackedMovieURL(movie) {
-  return `/api/movies/tracked/${encodeURIComponent(movie.id.provider)}/${encodeURIComponent(movie.id.value)}`;
+  return trackedMediaURL('movie', movie);
 }
 
 async function openMovieReleases(movie, button) {
@@ -1081,20 +1009,14 @@ async function openMovieReleases(movie, button) {
   lineupSection.hidden = true;
   selectedMovieTitle.textContent = `${movie.title} matches`;
   movieReleaseSection.hidden = false;
-  setBusy(button, true, 'Searching…');
-  status.textContent = '';
-  try {
+  await runAction(button, 'Searching…', 'Find releases', async () => {
     const resolved = await resolveQuality({kind: 'movie', id: movie.id}, []);
     movieResolution.value = resolved.preference.preferredResolution;
     movieCodec.value = resolved.preference.preferredVideoCodec;
     movieQualityInherit.hidden = !resolved.source;
     await loadMovieReleases(movie);
     movieReleaseSection.scrollIntoView({behavior: 'smooth', block: 'start'});
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(button, false, 'Find releases');
-  }
+  });
 }
 
 async function openInlineMovieReleases(movie, button) {
@@ -1113,16 +1035,11 @@ async function openInlineMovieReleases(movie, button) {
   }
   const summary = panel.querySelector('.release-summary');
   const results = panel.querySelector('.candidates');
-  setBusy(button, true, 'Searching…');
-  status.textContent = '';
-  try {
+  const loaded = await runAction(button, 'Searching…', 'Find releases', async () => {
     await loadMovieReleases(movie, summary, results);
-  } catch (error) {
-    panel.remove();
-    status.textContent = error.message;
-  } finally {
-    setBusy(button, false, 'Find releases');
-  }
+    return true;
+  });
+  if (!loaded) panel.remove();
 }
 
 async function loadMovieReleases(movie, summary = movieReleaseSummary, results = movieReleaseResults) {
@@ -1138,52 +1055,37 @@ async function loadMovieReleases(movie, summary = movieReleaseSummary, results =
 
 async function saveMoviePreferences() {
   if (!displayedMovie) return;
-  movieResolution.disabled = true;
-  movieCodec.disabled = true;
-  status.textContent = '';
-  try {
+  await runControlsAction([movieResolution, movieCodec], async () => {
     const settings = await requestJSON(`${trackedMovieURL(displayedMovie)}/download-settings`, {
       method: 'PUT',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({
+      json: {
         preferredResolution: movieResolution.value,
         preferredVideoCodec: movieCodec.value
-      })
+      }
     });
     const tracked = trackedMovies.get(providerKey(displayedMovie.id));
     if (tracked) tracked.downloadSettings = settings;
     await loadMovieReleases(displayedMovie);
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    movieResolution.disabled = false;
-    movieCodec.disabled = false;
-  }
+  });
 }
 
 movieQualityInherit.addEventListener('click', async () => {
   if (!displayedMovie) return;
-  setBusy(movieQualityInherit, true, 'Restoring…');
-  status.textContent = '';
-  try {
+  await runAction(movieQualityInherit, 'Restoring…', 'Use movie default', async () => {
     await setQualityOverride({kind: 'movie', id: displayedMovie.id}, null);
     const resolved = await resolveQuality({kind: 'movie', id: displayedMovie.id}, []);
     movieResolution.value = resolved.preference.preferredResolution;
     movieCodec.value = resolved.preference.preferredVideoCodec;
     movieQualityInherit.hidden = true;
     await loadMovieReleases(displayedMovie);
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(movieQualityInherit, false, 'Use movie default');
-  }
+  });
 });
 
 movieResolution.addEventListener('change', saveMoviePreferences);
 movieCodec.addEventListener('change', saveMoviePreferences);
 
 function seriesKey(series) {
-    return `${series.id.provider}:${series.id.value}`;
+  return providerKey(series.id);
 }
 
 function formatAirDate(value) {
@@ -1209,11 +1111,9 @@ async function loadSeries(series, button) {
     lineupPage.append(lineupSection);
     lineupSection.classList.remove('inline-series-seasons');
   }
-  setBusy(button, true, 'Loading…');
-  status.textContent = '';
   movieReleaseSection.hidden = true;
   displayedMovie = null;
-  try {
+  await runAction(button, 'Loading…', 'Show seasons', async () => {
     const canChoose = trackedSeries.has(seriesKey(series));
     const [data, lineup] = await Promise.all([
       requestJSON(`/api/tv/series/${encodeURIComponent(series.id.value)}/seasons`),
@@ -1233,11 +1133,7 @@ async function loadSeries(series, button) {
         card.append(lineupSection);
       }
     }
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(button, false, 'Show seasons');
-  }
+  });
 }
 
 function renderSeasons(series, items, canChoose, scrollToPanel = true) {
@@ -1380,9 +1276,7 @@ function renderDownloadSettings(series) {
   checkbox.type = 'checkbox';
   const preferences = document.createElement('div');
   preferences.className = 'download-preferences';
-  const monitoring = preferenceSelect('Episodes', [
-    ['future', 'Future'], ['all', 'All'], ['none', 'None']
-  ]);
+  const monitoring = preferenceSelect('Episodes', EPISODE_MONITORING_OPTIONS);
   preferences.append(monitoring.field);
   const label = document.createElement('span');
   label.textContent = 'Use season folders';
@@ -1402,42 +1296,31 @@ function renderDownloadSettings(series) {
   applySettings(tracked?.downloadSettings);
   const saveSettings = async () => {
     const controls = [checkbox];
-    for (const control of controls) control.disabled = true;
-    status.textContent = '';
     updateNote();
-    try {
+    const saved = await runControlsAction(controls, async () => {
       const settings = await requestJSON(`${trackedSeriesURL(series)}/download-settings`, {
         method: 'PUT',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({
+        json: {
           seasonFolders: checkbox.checked,
           preferredResolution: tracked?.downloadSettings?.preferredResolution || '1080p',
           preferredVideoCodec: tracked?.downloadSettings?.preferredVideoCodec || 'HEVC'
-        })
+        }
       });
       const item = trackedSeries.get(seriesKey(series));
       if (item) item.downloadSettings = settings;
-    } catch (error) {
-      applySettings(trackedSeries.get(seriesKey(series))?.downloadSettings);
-      status.textContent = error.message;
-    } finally {
-      for (const control of controls) control.disabled = false;
-    }
+      return true;
+    });
+    if (!saved) applySettings(trackedSeries.get(seriesKey(series))?.downloadSettings);
   };
   checkbox.addEventListener('change', saveSettings);
   monitoring.select.addEventListener('change', async () => {
-    monitoring.select.disabled = true;
-    status.textContent = '';
-    try {
+    const updated = await runControlsAction([monitoring.select], async () => {
       await updateLineup(series, {monitoring: monitoring.select.value});
       applyAllLineupStates();
       applyEpisodeDownloadStates([...downloadSubmissions.values()]);
-    } catch (error) {
-      monitoring.select.value = episodeMonitoring;
-      status.textContent = error.message;
-    } finally {
-      monitoring.select.disabled = false;
-    }
+      return true;
+    });
+    if (!updated) monitoring.select.value = episodeMonitoring;
   });
   copy.append(choice, note);
   panel.append(copy, preferences);
@@ -1478,16 +1361,14 @@ function qualitySourceLabel(source) {
 async function resolveQuality(target, ancestors) {
   return requestJSON('/api/quality/resolve', {
     method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({target, ancestors})
+    json: {target, ancestors}
   });
 }
 
 async function setQualityOverride(media, preference) {
   await requestJSON('/api/quality/override', {
     method: 'PUT',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({media, preference})
+    json: {media, preference}
   });
 }
 
@@ -1503,12 +1384,8 @@ function qualityOverrideControl(label, media, ancestors) {
   note.textContent = 'Loading…';
   const fields = document.createElement('div');
   fields.className = 'quality-override-fields';
-  const resolution = preferenceSelect('Resolution', [
-    ['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['any', 'Any']
-  ]);
-  const codec = preferenceSelect('Video codec', [
-    ['HEVC', 'HEVC'], ['AVC', 'AVC'], ['AV1', 'AV1'], ['MPEG-2', 'MPEG-2'], ['any', 'Any']
-  ]);
+  const resolution = preferenceSelect('Resolution', RESOLUTION_OPTIONS);
+  const codec = preferenceSelect('Video codec', VIDEO_CODEC_OPTIONS);
   fields.append(resolution.field, codec.field);
   const actions = document.createElement('div');
   actions.className = 'quality-override-actions';
@@ -1541,82 +1418,52 @@ function qualityOverrideControl(label, media, ancestors) {
     try { await load(); } catch (error) { status.textContent = error.message; }
   });
   save.addEventListener('click', async () => {
-    setBusy(save, true, 'Saving…');
-    try {
+    await runAction(save, 'Saving…', 'Save override', async () => {
       await setQualityOverride(media, {
         preferredResolution: resolution.select.value,
         preferredVideoCodec: codec.select.value
       });
       await load();
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      setBusy(save, false, 'Save override');
-    }
+    });
   });
   inherit.addEventListener('click', async () => {
-    setBusy(inherit, true, 'Restoring…');
-    try {
+    await runAction(inherit, 'Restoring…', 'Use inherited', async () => {
       await setQualityOverride(media, null);
       await load();
-    } catch (error) {
-      status.textContent = error.message;
-    } finally {
-      setBusy(inherit, false, 'Use inherited');
-    }
+    });
   });
   return details;
 }
 
 async function setSeasonDesired(series, season, section, checkbox) {
-  const desired = checkbox.checked;
-  hideBulkSend(section);
   const episodeInputs = [...section.querySelectorAll('[data-episode-key]')];
-  checkbox.disabled = true;
-  for (const input of episodeInputs) input.disabled = true;
-  status.textContent = '';
-  try {
-    await updateLineup(series, {
-      seasonNumber: season.number,
-      episodeIDs: season.episodes.map(episode => episode.id),
-      included: desired
-    });
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    checkbox.disabled = false;
-    for (const input of episodeInputs) input.disabled = false;
-    applyLineupState(section, season);
-    applyEpisodeDownloadStates([...downloadSubmissions.values()]);
-  }
+  await setLineupDesired(series, season, section, [checkbox, ...episodeInputs], {
+    seasonNumber: season.number,
+    episodeIDs: season.episodes.map(episode => episode.id),
+    included: checkbox.checked
+  });
 }
 
 async function setEpisodeDesired(series, season, section, episode, checkbox) {
-  const desired = checkbox.checked;
+  await setLineupDesired(series, season, section, [checkbox], {
+    seasonNumber: season.number,
+    episodeID: episode.id,
+    episodeIDs: season.episodes.map(item => item.id),
+    included: checkbox.checked
+  });
+}
+
+async function setLineupDesired(series, season, section, controls, change) {
   hideBulkSend(section);
-  checkbox.disabled = true;
-  status.textContent = '';
-  try {
-    await updateLineup(series, {
-      seasonNumber: season.number,
-      episodeID: episode.id,
-      episodeIDs: season.episodes.map(item => item.id),
-      included: desired
-    });
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    checkbox.disabled = false;
-    applyLineupState(section, season);
-    applyEpisodeDownloadStates([...downloadSubmissions.values()]);
-  }
+  await runControlsAction(controls, () => updateLineup(series, change));
+  applyLineupState(section, season);
+  applyEpisodeDownloadStates([...downloadSubmissions.values()]);
 }
 
 async function updateLineup(series, change) {
   const data = await requestJSON(lineupURL(series), {
     method: 'PUT',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify(change)
+    json: change
   });
   setLineup(data);
 }
@@ -1667,7 +1514,7 @@ function lineupURL(series) {
 }
 
 function trackedSeriesURL(series) {
-  return `/api/tv/tracked/${encodeURIComponent(series.id.provider)}/${encodeURIComponent(series.id.value)}`;
+  return trackedMediaURL('televisionSeries', series);
 }
 
 function providerKey(reference) {
@@ -1694,55 +1541,52 @@ async function loadReleases(series, season, section, button, container, sendSele
     return;
   }
 
-  setBusy(button, true, 'Searching…');
-  try {
-    const {candidates, matchedEpisodes} = await searchEpisodeReleases(
-      series,
-      season,
-      searchableEpisodes
-    );
+  await runEpisodeReleaseSearch({
+    series,
+    season,
+    section,
+    episodes: searchableEpisodes,
+    searchedEpisodeCount: searchableEpisodes.length,
+    skippedSpecialCount: selectedEpisodes.length - searchableEpisodes.length,
+    button,
+    idleLabel: 'Find releases',
+    container,
+    sendSelected
+  });
+}
+
+async function loadEpisodeReleases(series, season, section, episode, button, container) {
+  await runEpisodeReleaseSearch({
+    series,
+    season,
+    section,
+    episodes: [episode],
+    searchedEpisodeCount: 1,
+    skippedSpecialCount: 0,
+    button,
+    idleLabel: 'Search',
+    container
+  });
+}
+
+async function runEpisodeReleaseSearch({
+  series, season, section, episodes, searchedEpisodeCount, skippedSpecialCount,
+  button, idleLabel, container, sendSelected = null
+}) {
+  await runAction(button, 'Searching…', idleLabel, async () => {
+    const {candidates, matchedEpisodes} = await searchEpisodeReleases(series, season, episodes);
     renderReleases(
       candidates,
       matchedEpisodes,
-      searchableEpisodes.length,
-      selectedEpisodes.length - searchableEpisodes.length,
+      searchedEpisodeCount,
+      skippedSpecialCount,
       container,
       series,
       season,
       section,
       sendSelected
     );
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(button, false, 'Find releases');
-  }
-}
-
-async function loadEpisodeReleases(series, season, section, episode, button, container) {
-  status.textContent = '';
-  setBusy(button, true, 'Searching…');
-  try {
-    const {candidates, matchedEpisodes} = await searchEpisodeReleases(
-      series,
-      season,
-      [episode]
-    );
-    renderReleases(
-      candidates,
-      matchedEpisodes,
-      1,
-      0,
-      container,
-      series,
-      season,
-      section
-    );
-  } catch (error) {
-    status.textContent = error.message;
-  } finally {
-    setBusy(button, false, 'Search');
-  }
+  });
 }
 
 async function searchEpisodeReleases(series, season, episodes) {
@@ -1940,9 +1784,13 @@ function renderCandidate(candidate, series, episodeIDs, movie = null) {
     send.type = 'button';
     send.dataset.downloadKey = providerKey(candidate.id);
     applyDownloadButtonState(send, downloadSubmissions.get(send.dataset.downloadKey));
-    send.addEventListener('click', () => movie
-      ? sendMovieToSABnzbd(candidate, send, movie)
-      : sendToSABnzbd(candidate, send, series, episodeIDs));
+    send.addEventListener('click', () => sendCandidateToSABnzbd(
+      candidate,
+      send,
+      () => movie
+        ? submitMovieCandidate(candidate, movie)
+        : submitTelevisionCandidate(candidate, series, episodeIDs)
+    ));
     actions.append(send);
     item.append(actions);
   }
@@ -1971,8 +1819,7 @@ async function rememberDownloadContext(candidate, series, episodeIDs) {
       `/api/downloads/${encodeURIComponent(candidate.id.provider)}/${encodeURIComponent(candidate.id.value)}/context`,
       {
         method: 'PUT',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({seriesID: series.id, episodeIDs})
+        json: {seriesID: series.id, episodeIDs}
       }
     );
     downloadSubmissions.set(key, submission);
@@ -1994,14 +1841,14 @@ function applyDownloadButtonState(button, submission) {
   button.disabled = submission.state !== 'blocked';
 }
 
-async function sendToSABnzbd(candidate, button, series, episodeIDs) {
+async function sendCandidateToSABnzbd(candidate, button, submit) {
   const existing = downloadSubmissions.get(providerKey(candidate.id));
   const action = existing?.state === 'blocked' ? 'Retry' : 'Send';
   if (!window.confirm(`${action} “${candidate.title}” to SABnzbd now?`)) return;
   setBusy(button, true, 'Sending…');
   status.textContent = '';
   try {
-    const submission = await submitToSABnzbd(candidate, series, episodeIDs);
+    const submission = await submit();
     applyDownloadButtonState(button, submission);
     await loadDownloads();
   } catch (error) {
@@ -2023,7 +1870,7 @@ async function sendSelectedToSABnzbd(releases, button, series) {
   const failures = [];
   for (const release of releases) {
     try {
-      await submitToSABnzbd(release.candidate, series, release.episodeIDs);
+      await submitTelevisionCandidate(release.candidate, series, release.episodeIDs);
     } catch (error) {
       failures.push(error.message);
     }
@@ -2039,41 +1886,27 @@ async function sendSelectedToSABnzbd(releases, button, series) {
   button.hidden = true;
 }
 
-async function submitToSABnzbd(candidate, series, episodeIDs) {
+async function submitTelevisionCandidate(candidate, series, episodeIDs) {
   const data = await requestJSON('/api/downloads', {
     method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({
+    json: {
       candidateID: candidate.id,
       seriesID: series.id,
       episodeIDs
-    })
+    }
   });
   downloadSubmissions.set(providerKey(candidate.id), data.submission);
   await rememberDownloadContext(candidate, series, episodeIDs);
   return data.submission;
 }
 
-async function sendMovieToSABnzbd(candidate, button, movie) {
-  const existing = downloadSubmissions.get(providerKey(candidate.id));
-  const action = existing?.state === 'blocked' ? 'Retry' : 'Send';
-  if (!window.confirm(`${action} “${candidate.title}” to SABnzbd now?`)) return;
-  setBusy(button, true, 'Sending…');
-  status.textContent = '';
-  try {
-    const data = await requestJSON(`${trackedMovieURL(movie)}/downloads`, {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({candidateID: candidate.id})
-    });
-    downloadSubmissions.set(providerKey(candidate.id), data.submission);
-    applyDownloadButtonState(button, data.submission);
-    await loadDownloads();
-  } catch (error) {
-    status.textContent = error.message;
-    await loadDownloads();
-    applyDownloadButtonState(button, downloadSubmissions.get(providerKey(candidate.id)));
-  }
+async function submitMovieCandidate(candidate, movie) {
+  const data = await requestJSON(`${trackedMovieURL(movie)}/downloads`, {
+    method: 'POST',
+    json: {candidateID: candidate.id}
+  });
+  downloadSubmissions.set(providerKey(candidate.id), data.submission);
+  return data.submission;
 }
 
 function appendTraitPill(container, kind, value, classValue = value) {
@@ -2146,12 +1979,48 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? null : date.toLocaleDateString();
 }
 
-async function requestJSON(url, options) {
+async function requestJSON(url, {json, ...options} = {}) {
+  if (json !== undefined) {
+    options.headers = {...options.headers, 'content-type': 'application/json'};
+    options.body = JSON.stringify(json);
+  }
   const response = await fetch(url, options);
   if (response.status === 204) return null;
   const data = await response.json();
   if (!response.ok) throw new Error(data.reason || 'The request failed.');
   return data;
+}
+
+async function runAction(button, busyLabel, idleLabel, operation, errorTarget = status) {
+  if (errorTarget) errorTarget.textContent = '';
+  if (button) setBusy(button, true, busyLabel);
+  try {
+    return await operation();
+  } catch (error) {
+    if (errorTarget) errorTarget.textContent = error.message;
+    return null;
+  } finally {
+    if (button) {
+      setBusy(button, false, typeof idleLabel === 'function' ? idleLabel() : idleLabel);
+    }
+  }
+}
+
+function setControlsDisabled(controls, disabled) {
+  for (const control of controls) control.disabled = disabled;
+}
+
+async function runControlsAction(controls, operation, errorTarget = status) {
+  if (errorTarget) errorTarget.textContent = '';
+  setControlsDisabled(controls, true);
+  try {
+    return await operation();
+  } catch (error) {
+    if (errorTarget) errorTarget.textContent = error.message;
+    return null;
+  } finally {
+    setControlsDisabled(controls, false);
+  }
 }
 
 function setBusy(button, busy, label) {

@@ -11,6 +11,8 @@ test -x "$binary" || { echo "Missing static Linux artifact: $binary" >&2; exit 1
 for resource in index.html app.css app.js; do
   test -f "$resource_bundle/Web/$resource" \
     || { echo "Missing packaged web resource: $resource" >&2; exit 1; }
+  cmp -s "Sources/CallupServer/Resources/Web/$resource" "$resource_bundle/Web/$resource" \
+    || { echo "Refusing to package a stale web resource: $resource" >&2; exit 1; }
 done
 
 case "$(file "$binary")" in
@@ -18,7 +20,9 @@ case "$(file "$binary")" in
   *) echo "Refusing to package a binary that is not stripped static Linux x86_64: $binary" >&2; exit 1 ;;
 esac
 
-if find Package.swift Sources -type f -newer "$binary" -print -quit | grep -q .; then
+if test Package.swift -nt "$binary" \
+    || find Sources -type f ! -path 'Sources/CallupServer/Resources/*' \
+      -newer "$binary" -print -quit | grep -q .; then
   echo "Refusing to package a stale binary; rebuild the public Linux release first." >&2
   exit 1
 fi
