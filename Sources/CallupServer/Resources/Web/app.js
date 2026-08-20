@@ -110,6 +110,12 @@ loadUpdates();
 loadDownloads();
 loadQuality();
 
+document.addEventListener('pointerdown', event => {
+  for (const details of document.querySelectorAll('.quality-override[open]')) {
+    if (!details.contains(event.target)) details.open = false;
+  }
+});
+
 lineupSort.addEventListener('change', () => {
   const url = new URL(window.location.href);
   url.searchParams.set('sort', lineupSort.value);
@@ -1376,7 +1382,9 @@ function qualityOverrideControl(label, media, ancestors) {
   const details = document.createElement('details');
   details.className = 'quality-override';
   const summary = document.createElement('summary');
-  summary.textContent = label;
+  summary.textContent = '⚙';
+  summary.setAttribute('aria-label', label);
+  summary.title = label;
   const panel = document.createElement('div');
   panel.className = 'quality-override-panel';
   const note = document.createElement('span');
@@ -1406,7 +1414,9 @@ function qualityOverrideControl(label, media, ancestors) {
     resolution.select.value = resolved.preference.preferredResolution;
     codec.select.value = resolved.preference.preferredVideoCodec;
     const custom = sameMediaReference(resolved.source, media);
-    summary.textContent = `${label} · ${custom ? 'custom' : 'inherited'}`;
+    const summaryLabel = `${label} · ${custom ? 'custom' : 'inherited'}`;
+    summary.setAttribute('aria-label', summaryLabel);
+    summary.title = summaryLabel;
     note.textContent = custom
       ? qualitySummary(resolved.preference)
       : `${qualitySummary(resolved.preference)} Inherited from ${qualitySourceLabel(resolved.source)}.`;
@@ -1414,7 +1424,11 @@ function qualityOverrideControl(label, media, ancestors) {
     loaded = true;
   };
   details.addEventListener('toggle', async () => {
-    if (!details.open || loaded) return;
+    if (!details.open) return;
+    for (const other of document.querySelectorAll('.quality-override[open]')) {
+      if (other !== details) other.open = false;
+    }
+    if (loaded) return;
     try { await load(); } catch (error) { status.textContent = error.message; }
   });
   save.addEventListener('click', async () => {
