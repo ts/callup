@@ -19,7 +19,7 @@ enum CallupServer {
         do {
             let store = try await configuredStore()
             let connectionSettings = try configuredConnectionSettings()
-            configure(application, store: store, connectionSettings: connectionSettings)
+            try configure(application, store: store, connectionSettings: connectionSettings)
             try await application.execute()
         } catch {
             application.logger.report(error: error)
@@ -34,7 +34,7 @@ enum CallupServer {
         _ application: Application,
         store: ApplicationStore,
         connectionSettings: ConnectionSettingsStore
-    ) {
+    ) throws {
         application.http.server.configuration.hostname = configuredHost()
         application.http.server.configuration.port = configuredPort()
 
@@ -92,7 +92,7 @@ enum CallupServer {
             DownloadReconciliationLifecycle(worker: reconciliationWorker)
         )
 
-        registerRoutes(
+        try registerRoutes(
             on: application,
             store: store,
             connectionSettings: connectionSettings,

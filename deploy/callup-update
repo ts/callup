@@ -8,6 +8,7 @@ request_file="$request_directory/request"
 processing_file="$request_directory/request.processing"
 status_file="$request_directory/status.json"
 binary=/opt/callup/bin/callup
+resource_bundle=/opt/callup/bin/Callup_CallupServer.resources
 release_environment=/etc/callup/callup-release.env
 temporary_directory=
 rollback_directory=
@@ -49,6 +50,21 @@ restore_state_file() {
     fi
 }
 
+backup_resource_bundle() {
+    [ ! -L "$resource_bundle" ] || return 1
+    if [ -d "$resource_bundle" ]; then
+        cp -R "$resource_bundle" "$rollback_directory/resource-bundle"
+        : > "$rollback_directory/resource-bundle.present"
+    fi
+}
+
+restore_resource_bundle() {
+    rm -rf "$resource_bundle"
+    if [ -f "$rollback_directory/resource-bundle.present" ]; then
+        cp -R "$rollback_directory/resource-bundle" "$resource_bundle"
+    fi
+}
+
 write_status() {
     state=$1
     message=$2
@@ -70,6 +86,7 @@ finish() {
             systemctl stop callup.service
             install -m 0755 "$rollback_directory/callup" "$binary"
             install -m 0644 "$rollback_directory/callup-release.env" "$release_environment"
+            restore_resource_bundle
             restore_state_file "$database_path" database
             restore_state_file "${database_path}-wal" database-wal
             restore_state_file "${database_path}-shm" database-shm
@@ -165,10 +182,14 @@ for required_file in callup callup-release.env callup.service callup-update call
     [ -f "${release_directory}/${required_file}" ] || exit 1
 done
 [ -x "${release_directory}/callup" ] || exit 1
+for resource in index.html app.css app.js; do
+    [ -f "${release_directory}/Callup_CallupServer.resources/Web/${resource}" ] || exit 1
+done
 
 rollback_directory=$(mktemp -d /opt/callup/.rollback.XXXXXX)
 install -m 0755 "$binary" "$rollback_directory/callup"
 install -m 0644 "$release_environment" "$rollback_directory/callup-release.env"
+backup_resource_bundle
 install -m 0755 "${release_directory}/callup" /opt/callup/bin/callup.new
 database_path=$(runtime_value CALLUP_DATABASE_PATH /var/lib/callup/callup.sqlite)
 connections_path=$(runtime_value CALLUP_CONNECTIONS_PATH /var/lib/callup/connections.json)
@@ -181,9 +202,14 @@ backup_state_file "$database_path" database
 backup_state_file "${database_path}-wal" database-wal
 backup_state_file "${database_path}-shm" database-shm
 backup_state_file "$connections_path" connections
-mv -f /opt/callup/bin/callup.new "$binary"
-install -m 0644 "${release_directory}/callup-release.env" "$release_environment"
 swapped=1
+mv -f /opt/callup/bin/callup.new "$binary"
+install -d -o root -g root -m 0755 "$resource_bundle/Web"
+for resource in index.html app.css app.js; do
+    install -m 0644 "${release_directory}/Callup_CallupServer.resources/Web/${resource}" \
+        "$resource_bundle/Web/${resource}"
+done
+install -m 0644 "${release_directory}/callup-release.env" "$release_environment"
 
 install -d -o root -g root -m 0755 /opt/callup/libexec
 install -m 0755 "${release_directory}/callup-update" /opt/callup/libexec/callup-update

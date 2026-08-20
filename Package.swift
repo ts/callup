@@ -57,7 +57,8 @@ let package = Package(
                 "CallupTMDB",
                 "CallupUpdates",
                 .product(name: "Vapor", package: "vapor"),
-            ]
+            ],
+            resources: [.copy("Resources/Web")]
         ),
         .testTarget(name: "CallupCoreTests", dependencies: ["CallupCore"]),
         .testTarget(

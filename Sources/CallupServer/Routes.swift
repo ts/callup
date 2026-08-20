@@ -15,8 +15,8 @@ func registerRoutes(
     library: LibraryInventory,
     updates: CallupUpdateService,
     revision: String
-) {
-    registerPageRoutes(on: application)
+) throws {
+    try registerPageRoutes(on: application)
     CallupServer.registerAPIRoutes(
         on: application,
         store: store,

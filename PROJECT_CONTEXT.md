@@ -304,6 +304,27 @@ Unified acquisition service ----------------------- SQLite
   install/restart/rollback boundary; the web process never runs as root and
   never replaces its own executable.
 
+### Web boundary
+
+Callup remains a server-run Swift application with a lightweight browser
+interface. Swift owns product state, validation, persistence, ranking,
+acquisition, and workflow decisions. Prefer server-driven HTML interactions
+when they make a feature simpler; use browser JavaScript to hydrate, amplify,
+or improve an interaction rather than to create a parallel application model.
+
+Web assets live as plain `index.html`, `app.css`, and `app.js` SwiftPM resources
+served by Vapor and packaged with the existing release. The initial extraction
+mechanically removed roughly 2,165 lines of JavaScript plus the application's
+HTML and CSS from one oversized Swift string without changing their behavior.
+Keep `app.js` whole until a real feature boundary reduces coupling.
+
+This extraction must not introduce npm, a frontend build step, a development
+server, a JavaScript framework, a template engine, generated embedding code, or
+premature module proliferation. Native browser features and SwiftPM resources
+are sufficient. External CSS and JavaScript may be cached normally. Revisit
+individual JavaScript workflows later and move them server-side where that
+removes state or code rather than adding another layer.
+
 Provider responses must be stored separately from domain models so replacing or
 adding a provider does not rewrite the product. Protocol boundaries should be
 defined from actual integrations, but cardinality must not be artificially
@@ -606,6 +627,7 @@ pipeline, then keep importer and final-placement work separate.**
 | 2026-08-17 | Added in-app backup and restore | Settings downloads/uploads a versioned logical backup of durable user state; connections require explicit secret inclusion, restore replaces state transactionally, and disposable caches are rebuilt | Sixty-seven tests; embedded JavaScript syntax check; isolated HTTP round-trip of 8 shows, 6 movies, and 57 download records |
 | 2026-08-18 | Generalized movie metadata connection settings | Metadata providers are a durable collection with provider-neutral routes; TMDB credentials can be validated and saved without entering browser responses, take effect immediately, and remain compatible with older connection files | Seventy-one tests; embedded JavaScript syntax check; isolated no-token-to-live-movie-search HTTP verification |
 | 2026-08-19 | Added cascading quality preferences | Television defaults cascade through show, season, and episode overrides; movies have a separate default and title override; release ranking resolves the nearest layer and acquisitions retain immutable preference/source snapshots | Eighty tests; backup round-trip; embedded JavaScript syntax check |
+| 2026-08-19 | Extracted the browser assets from Swift | Plain HTML, CSS, and JavaScript are SwiftPM resources loaded once by Vapor, conditionally cached by the browser, and included in install/update rollback without a frontend build step or template engine | Eighty tests; exact comparison with the prior embedded assets; static Linux resource-bundle build and package verification |
 
 ## Reference
 

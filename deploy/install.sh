@@ -8,6 +8,11 @@ fi
 
 release_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+for resource in index.html app.css app.js; do
+  [ -f "$release_dir/Callup_CallupServer.resources/Web/$resource" ] \
+    || { echo "Missing Callup web resource: $resource" >&2; exit 1; }
+done
+
 getent group media >/dev/null 2>&1 || groupadd --gid 1500 media
 getent passwd callup >/dev/null 2>&1 || useradd --system --home /var/lib/callup --gid media --shell /usr/sbin/nologin callup
 
@@ -15,6 +20,12 @@ install -d -o callup -g media -m 0750 /var/lib/callup /var/lib/callup/updates
 install -d -o root -g root -m 0755 /opt/callup/bin /opt/callup/libexec
 install -d -o root -g media -m 0750 /etc/callup
 install -m 0755 "$release_dir/callup" /opt/callup/bin/callup
+install -d -o root -g root -m 0755 \
+  /opt/callup/bin/Callup_CallupServer.resources/Web
+for resource in index.html app.css app.js; do
+  install -m 0644 "$release_dir/Callup_CallupServer.resources/Web/$resource" \
+    "/opt/callup/bin/Callup_CallupServer.resources/Web/$resource"
+done
 install -m 0755 "$release_dir/callup-update" /opt/callup/libexec/callup-update
 install -m 0644 "$release_dir/callup.service" /etc/systemd/system/callup.service
 install -m 0644 "$release_dir/callup-update.service" /etc/systemd/system/callup-update.service

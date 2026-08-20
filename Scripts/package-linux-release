@@ -3,10 +3,15 @@ set -eu
 
 version=${1:?Usage: Scripts/package-linux-release VERSION}
 binary=.build/x86_64-swift-linux-musl/release/callup
+resource_bundle=.build/x86_64-swift-linux-musl/release/Callup_CallupServer.resources
 release_dir="dist/callup-${version}-linux-amd64"
 archive="dist/callup-${version}-linux-amd64.tar.gz"
 
 test -x "$binary" || { echo "Missing static Linux artifact: $binary" >&2; exit 1; }
+for resource in index.html app.css app.js; do
+  test -f "$resource_bundle/Web/$resource" \
+    || { echo "Missing packaged web resource: $resource" >&2; exit 1; }
+done
 
 case "$(file "$binary")" in
   *"ELF 64-bit LSB executable, x86-64"*"statically linked"*"stripped"*) ;;
@@ -21,6 +26,11 @@ fi
 rm -rf "$release_dir"
 mkdir -p "$release_dir"
 install -m 0755 "$binary" "$release_dir/callup"
+install -d -m 0755 "$release_dir/Callup_CallupServer.resources/Web"
+for resource in index.html app.css app.js; do
+  install -m 0644 "$resource_bundle/Web/$resource" \
+    "$release_dir/Callup_CallupServer.resources/Web/$resource"
+done
 install -m 0755 deploy/install.sh "$release_dir/install.sh"
 install -m 0755 deploy/callup-update "$release_dir/callup-update"
 install -m 0644 deploy/callup.service "$release_dir/callup.service"
